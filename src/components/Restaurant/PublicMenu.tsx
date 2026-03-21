@@ -138,6 +138,7 @@ const PublicMenu = () => {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
           >
             {categories.map(cat => (
@@ -166,7 +167,7 @@ const PublicMenu = () => {
       {/* Menu List */}
       <FlatList
         data={filteredItems.slice(0, visibleCount)}
-        // FIX 7: Explicitly type 'item' inside keyExtractor
+keyboardShouldPersistTaps="handled"
         keyExtractor={(item: any) => item._id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}

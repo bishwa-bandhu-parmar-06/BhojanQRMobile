@@ -44,7 +44,7 @@ const ProfileDetails: React.FC<ProfileDetailsProps> = ({ restaurant, setActiveTa
       : "No address added yet";
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView keyboardShouldPersistTaps="handled" style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Profile Details</Text>
         <TouchableOpacity style={styles.editButton} onPress={() => setActiveTab("settings")}>

@@ -4,7 +4,7 @@ import { store } from '../App/store';
 import { logout } from '../Features/AuthSlice';
 
 // DEFINE YOUR ENVIRONMENTS HERE
-const LOCAL_IP = '192.168.1.4';
+const LOCAL_IP = '172.31.146.159';
 const ENV = {
   PROD_URL: 'https://bhojanqr-mjos.onrender.com/api',
   DEV_ANDROID_URL: `http://${LOCAL_IP}:3000/api`,

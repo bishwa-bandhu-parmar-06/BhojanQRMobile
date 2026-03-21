@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { 
   View, 
   Text, 
@@ -6,15 +6,16 @@ import {
   FlatList, 
   ActivityIndicator, 
   StyleSheet, 
-  Dimensions
-  // FIX 1: Removed SafeAreaView from here
+  Dimensions,
+  RefreshControl,
+  TouchableOpacity
 } from "react-native";
 
-// FIX 2: Imported it from the modern library instead
+// Imported it from the modern library instead
 import { SafeAreaView } from "react-native-safe-area-context"; 
-
+import NetInfo from "@react-native-community/netinfo"; 
 import Toast from "react-native-toast-message";
-import { Store, Tag } from "lucide-react-native";
+import { Store, Tag,RefreshCw,WifiOff } from "lucide-react-native";
 
 // Assume this is your API function
 import { getAllMenuItems } from "../API/menuApi"; 
@@ -105,53 +106,102 @@ const MenuCard: React.FC<MenuCardProps> = ({ item }) => {
   );
 };
 
-// --- MAIN COMPONENT ---
 const Menu: React.FC = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isFetchingMore, setIsFetchingMore] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false); 
+  const [isOffline, setIsOffline] = useState<boolean>(false); 
+
   const [page, setPage] = useState<number>(1);
   const [hasMore, setHasMore] = useState<boolean>(true);
 
-  const fetchMenu = async (pageNumber: number) => {
-    try {
-      if (pageNumber === 1) setLoading(true);
-      else setIsFetchingMore(true);
 
-      const res = await getAllMenuItems(pageNumber, 8);
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected);
+      if (!state.isConnected) {
+        Toast.show({
+          type: 'error',
+          text1: 'No Internet Connection',
+          text2: 'Please check your WiFi or Mobile Data'
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+
+  const fetchMenu = async (pageNumber: number, isRefreshing = false) => {
+    try {
+      if (isRefreshing) setRefreshing(true);
+      else if (pageNumber === 1) setLoading(true);
+      else setIsFetchingMore(true); //  Bottom loader chalu karne ke liye
+
+      // Limit ko 8 rakhte hain app ke liye
+      const LIMIT = 8;
+      const res = await getAllMenuItems(pageNumber, LIMIT);
+      
       const newItems: MenuItem[] = res.data?.data || [];
 
-      if (newItems.length === 0) {
+      //  Agar aane wala data limit se kam hai, matlab aage aur data nahi hai
+      if (newItems.length < LIMIT) {
         setHasMore(false);
-        return;
       }
 
-      setMenuItems((prev: MenuItem[]) => {
-        const existingIds = new Set(prev.map((item: MenuItem) => item._id));
-        const filteredItems = newItems.filter(
-          (item: MenuItem) => !existingIds.has(item._id)
-        );
-        return [...prev, ...filteredItems];
+      setMenuItems(prev => {
+        if (isRefreshing || pageNumber === 1) {
+          return newItems;
+        }
+
+        const existingIds = new Set(prev.map(item => item._id));
+        const filteredNewItems = newItems.filter(item => !existingIds.has(item._id));
+        return [...prev, ...filteredNewItems];
       });
     } catch (error: any) {
-      console.error(error);
-      Toast.show({ type: "error", text1: "Failed to load menu" });
+      console.error("Fetch Error:", error);
+      Toast.show({ type: "error", text1: "Network Error" });
     } finally {
       setLoading(false);
-      setIsFetchingMore(false);
+      setRefreshing(false);
+      setIsFetchingMore(false); //  Bottom loader band karne ke liye
+    }
+  };
+
+  const handleLoadMore = () => {
+    //  Check lagaya ki pehle se fetch nahi ho raha ho tabhi page badhaye
+    if (!loading && hasMore && !isOffline && !isFetchingMore) {
+      setPage(prev => prev + 1);
     }
   };
 
   useEffect(() => {
-    fetchMenu(page);
-  }, [page]);
+    if (!isOffline) fetchMenu(page);
+  }, [page, isOffline]);
 
-  // Handle Infinite Scroll
-  const handleLoadMore = () => {
-    if (!loading && !isFetchingMore && hasMore) {
-      setPage((prev) => prev + 1);
-    }
-  };
+  const onRefresh = useCallback(() => {
+    setPage(1);
+    setHasMore(true);
+    fetchMenu(1, true);
+  }, [isOffline]);
+
+  
+
+
+  if (isOffline) {
+    return (
+      <View style={styles.centerScreen}>
+        <WifiOff size={60} color="#ef4444" strokeWidth={1.5} />
+        <Text style={styles.errorTitle}>No Connection</Text>
+        <Text style={styles.errorSub}>Please connect to the internet to see the menu.</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+          <Text style={styles.retryText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+
 
   // Header Component (Scrolls with the list)
   const renderHeader = () => (
@@ -197,6 +247,7 @@ const Menu: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
+      keyboardShouldPersistTaps="handled"
         data={menuItems}
         keyExtractor={(item: MenuItem) => item._id}
         renderItem={({ item }) => <MenuCard item={item} />}
@@ -205,6 +256,17 @@ const Menu: React.FC = () => {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
+
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            colors={["#ea580c"]} 
+            tintColor="#ea580c"
+          />
+        }
+
+
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5} // Trigger load more when halfway down the list
         showsVerticalScrollIndicator={false}
@@ -300,8 +362,15 @@ const styles = StyleSheet.create({
   priceText: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#ea580c", // orange-600
+    color: "#ea580c",
   },
+
+  errorTitle: { fontSize: 20, fontWeight: "bold", marginTop: 16, color: "#1f2937" },
+  errorSub: { textAlign: "center", color: "#6b7280", marginTop: 8 },
+  retryButton: { marginTop: 20, backgroundColor: "#ea580c", paddingHorizontal: 30, paddingVertical: 12, borderRadius: 10 },
+  retryText: { color: "#fff", fontWeight: "bold" },
+
+
   outOfStockOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.4)",

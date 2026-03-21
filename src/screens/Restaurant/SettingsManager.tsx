@@ -131,7 +131,7 @@ const SettingsManager = () => {
   if (loading) return <View style={styles.loader}><ActivityIndicator size="large" color="#f97316" /></View>;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView  keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.scrollContent}>
       
       {/* Header */}
       <View style={styles.header}>
@@ -264,7 +264,7 @@ const SettingsManager = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ padding: 24 }} contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView  keyboardShouldPersistTaps="handled" style={{ padding: 24 }} contentContainerStyle={{ paddingBottom: 40 }}>
               <Text style={styles.label}>Street Address *</Text>
               <TextInput style={styles.inputSolo} placeholder="Shop No, Building..." value={addressForm.street} onChangeText={(t) => setAddressForm({ ...addressForm, street: t })} />
               

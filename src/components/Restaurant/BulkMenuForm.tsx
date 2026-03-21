@@ -132,7 +132,7 @@ const BulkMenuForm: React.FC<BulkMenuFormProps> = ({ onCancel, onSuccess }) => {
         </View>
       )}
 
-      <ScrollView style={styles.list}>
+      <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
         {items.map((item: any) => (
           <View key={item.id} style={styles.rowCard}>
             <TouchableOpacity onPress={() => handleImageChange(item.id)} disabled={isUploading} style={styles.imageBox}>

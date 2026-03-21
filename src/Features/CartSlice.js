@@ -1,9 +1,9 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
-  items: [], // Array to hold the actual food objects
-  totalQuantity: 0, // For the Navbar badge
-  totalAmount: 0, // For the total price
+  items: [], 
+  totalQuantity: 0, 
+  totalAmount: 0,
 };
 
 const cartSlice = createSlice({
@@ -18,13 +18,11 @@ const cartSlice = createSlice({
       state.totalAmount += Number(newItem.price);
 
       if (!existingItem) {
-        // If it's a new item, add it to the array with quantity 1
         state.items.push({
           ...newItem,
           quantity: 1,
         });
       } else {
-        // If it already exists, just increment the quantity
         existingItem.quantity++;
       }
     },

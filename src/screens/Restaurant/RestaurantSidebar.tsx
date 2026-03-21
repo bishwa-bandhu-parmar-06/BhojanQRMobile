@@ -78,6 +78,8 @@ const RestaurantSidebar: React.FC<RestaurantSidebarProps> = ({
       {/* NAVIGATION SECTION */}
       <ScrollView 
         style={styles.nav}
+
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.navContent}
         showsVerticalScrollIndicator={false}
       >

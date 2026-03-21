@@ -88,7 +88,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
           </Text>
 
           <Text style={styles.itemsTitle}>Ordered Items:</Text>
-          <ScrollView style={styles.itemList}>
+          <ScrollView style={styles.itemList} keyboardShouldPersistTaps="handled">
             {/* FIX 4: Explicitly type 'item' and 'idx' */}
             {(Array.isArray(order.items) ? order.items : [order.items]).map(
               (item: any, idx: number) => (

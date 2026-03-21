@@ -4,6 +4,7 @@ import cartReducer from '../Features/CartSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { persistReducer } from 'redux-persist';
 import { combineReducers } from 'redux';
+import { persistStore } from 'redux-persist';
 
 const persistConfig = {
   key: 'bhojanqr_root',
@@ -26,3 +27,5 @@ export const store = configureStore({
       immutableCheck: { warnAfter: 128 },
     }),
 });
+
+export const persistor = persistStore(store);

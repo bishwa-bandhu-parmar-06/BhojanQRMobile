@@ -42,7 +42,7 @@ const Help = () => {
     <LinearGradient colors={["#f0fdf4", "#fff7ed", "#f0fdf4"]} style={styles.globalGradient}>
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
             
             {/* HERO SECTION & SEARCH */}
             <View style={styles.heroSection}>
@@ -71,7 +71,7 @@ const Help = () => {
 
             {/* CATEGORIES */}
             <View style={styles.sectionContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 16 }}>
+              <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 16 }}>
                 {helpCategories.map((cat) => {
                   const isActive = activeCategory === cat.id;
                   return (

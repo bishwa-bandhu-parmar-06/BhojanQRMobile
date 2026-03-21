@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   FlatList,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -42,7 +43,6 @@ const GuestMenu = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
-  // Grab parameters passed from the Deep Link or QR Code scanner
   const { restaurantId, table } = route.params || {};
 
   const cartItems = useSelector((state: any) => state.cart?.items || []);
@@ -50,7 +50,13 @@ const GuestMenu = () => {
 
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
   const [restaurantName, setRestaurantName] = useState('Loading...');
+  
+  //  Pagination & Loading States
   const [loading, setLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); 
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   
   // Filter States
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -58,23 +64,71 @@ const GuestMenu = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [priceRange, setPriceRange] = useState<string>('3000');
 
-  useEffect(() => {
-    const fetchMenu = async () => {
-      try {
-        const res = await getPublicMenu(restaurantId);
-        const items = res.data.data;
-        setAllMenuItems(items);
-        if (items.length > 0 && items[0].restaurant) {
-          setRestaurantName(items[0].restaurant.restaurantName);
-        }
-      } catch (error) {
-        Toast.show({ type: 'error', text1: 'Failed to load menu.' });
-      } finally {
-        setLoading(false);
+  //  Fetch Menu Logic with Pagination
+  const fetchMenu = async (pageNumber: number, isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else if (pageNumber === 1) {
+        setLoading(true);
+      } else {
+        setIsFetchingMore(true);
       }
-    };
-    if (restaurantId) fetchMenu();
+
+      const LIMIT = 8;
+      // Make sure your getPublicMenu accepts page and limit arguments!
+      const res = await getPublicMenu(restaurantId, pageNumber, LIMIT); 
+      const newItems: MenuItem[] = res.data?.data || [];
+
+      if (newItems.length > 0 && newItems[0].restaurant) {
+        setRestaurantName(newItems[0].restaurant.restaurantName);
+      }
+
+      // Check if we hit the end
+      if (newItems.length < LIMIT) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
+      }
+
+      setAllMenuItems((prev) => {
+        if (isRefresh || pageNumber === 1) return newItems;
+
+        const existingIds = new Set(prev.map(item => item._id));
+        const filteredNewItems = newItems.filter(item => !existingIds.has(item._id));
+        return [...prev, ...filteredNewItems];
+      });
+      
+    } catch (error) {
+      Toast.show({ type: 'error', text1: 'Failed to load menu.' });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+      setIsFetchingMore(false);
+    }
+  };
+
+  // Initial Fetch
+  useEffect(() => {
+    if (restaurantId) {
+      fetchMenu(1);
+    }
   }, [restaurantId]);
+
+  // Pull to Refresh
+  const onRefresh = useCallback(() => {
+    setPage(1);
+    fetchMenu(1, true);
+  }, [restaurantId]);
+
+  // Load More logic for Infinite Scroll
+  const handleLoadMore = () => {
+    if (!loading && !isFetchingMore && !refreshing && hasMore) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchMenu(nextPage);
+    }
+  };
 
   const filteredItems = useMemo(() => {
     return allMenuItems.filter((item) => {
@@ -120,7 +174,26 @@ const GuestMenu = () => {
     </View>
   );
 
-  if (loading) {
+  //  Footer for Infinite Scroll
+  const renderFooter = () => {
+    if (isFetchingMore) {
+      return (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="large" color="#ea580c" />
+        </View>
+      );
+    }
+    if (!hasMore && allMenuItems.length > 0) {
+      return (
+        <View style={styles.footerEnd}>
+          <Text style={styles.footerEndText}>You've seen all the dishes! 🍽️</Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  if (loading && allMenuItems.length === 0) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color="#ea580c" />
@@ -156,6 +229,7 @@ const GuestMenu = () => {
         <View style={styles.filtersContainer}>
           <Text style={styles.filterLabel}>CATEGORIES</Text>
           <FlatList
+            keyboardShouldPersistTaps="handled"
             horizontal
             showsHorizontalScrollIndicator={false}
             data={categories}
@@ -184,7 +258,7 @@ const GuestMenu = () => {
 
       {/* 3. MENU LIST */}
       <FlatList
-        // The key prop forces FlatList to re-render from scratch when viewMode changes
+        keyboardShouldPersistTaps="handled"
         key={viewMode}
         data={filteredItems}
         keyExtractor={(item) => item._id}
@@ -192,6 +266,18 @@ const GuestMenu = () => {
         numColumns={viewMode === 'grid' ? 2 : 1}
         contentContainerStyle={styles.listContent}
         columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+        //  Added Infinite Scroll Props
+        ListFooterComponent={renderFooter}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            colors={["#ea580c"]} 
+            tintColor="#ea580c"
+          />
+        }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
       />
 
       {/* 4. FLOATING CHECKOUT BUTTON */}
@@ -218,7 +304,6 @@ const GuestMenu = () => {
     </SafeAreaView>
   );
 };
-
 
 export default GuestMenu;
 
@@ -274,4 +359,9 @@ const styles = StyleSheet.create({
   fabText: { color: '#fff', fontWeight: 'bold', fontSize: 16, marginHorizontal: 12 },
   fabDivider: { width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 8 },
   fabPrice: { color: '#fff', fontWeight: '900', fontSize: 16 },
+
+  //  Footer Styles Add kiye hain
+  footerLoader: { paddingVertical: 24, alignItems: "center" },
+  footerEnd: { paddingVertical: 24, alignItems: "center" },
+  footerEndText: { color: "#9ca3af", fontWeight: "500", fontStyle: "italic" },
 });

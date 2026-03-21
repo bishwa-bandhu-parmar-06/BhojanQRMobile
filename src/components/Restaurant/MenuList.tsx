@@ -51,6 +51,8 @@ const MenuList: React.FC<MenuListProps> = ({
   // Menu List Layout
   return (
     <FlatList
+    keyboardShouldPersistTaps="handled"
+    
       data={items}
       keyExtractor={item => item._id}
       renderItem={({ item }) => (

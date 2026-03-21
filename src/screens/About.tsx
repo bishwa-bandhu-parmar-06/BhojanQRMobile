@@ -52,6 +52,7 @@ const AboutPage = () => {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
           {/* HERO SECTION */}
           <View style={styles.heroSection}>

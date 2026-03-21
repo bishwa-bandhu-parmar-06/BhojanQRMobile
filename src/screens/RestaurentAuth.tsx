@@ -163,6 +163,7 @@ const RestaurentAuth = () => {
     >
       <SafeAreaView style={styles.safeArea}>
         <ScrollView 
+        keyboardShouldPersistTaps="handled"
           ref={scrollViewRef}
           showsVerticalScrollIndicator={false} 
           contentContainerStyle={styles.scrollContent}
@@ -243,7 +244,7 @@ const RestaurentAuth = () => {
 
                     {/* ID Type Selector (Horizontal Chips) */}
                     <Text style={styles.inputLabel}>Select ID Type *</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsContainer}>
+                    <ScrollView  keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={styles.chipsContainer}>
                       {idTypes.map((type) => (
                         <TouchableOpacity
                           key={type}

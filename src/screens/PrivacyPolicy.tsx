@@ -94,7 +94,7 @@ const PrivacyPolicy = () => {
       style={styles.globalGradient}
     >
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView  keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           
           {/* HERO SECTION */}
           <View style={styles.heroSection}>

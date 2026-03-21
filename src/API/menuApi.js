@@ -2,8 +2,10 @@ import api from './axiosInstance';
 
 const BASE_URL = '/menu';
 
-export const getPublicMenu = restaurantId => {
-  return api.get(`${BASE_URL}/public/${restaurantId}`);
+export const getPublicMenu = (restaurantId, page = 1, limit = 8) => {
+  return api.get(
+    `${BASE_URL}/public/${restaurantId}?page=${page}&limit=${limit}`,
+  );
 };
 
 export const getAllMenuItems = (page = 1, limit = 8) => {

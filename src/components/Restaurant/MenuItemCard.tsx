@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Switch,
 } from 'react-native';
+import { Animated, Pressable } from 'react-native';
+
 import { Pencil, Trash2, Tag } from 'lucide-react-native';
 
 // FIX 1: Define the shape of the 'item' object
@@ -28,6 +30,63 @@ interface MenuItemCardProps {
   onDelete: (id: string) => void;
   onToggleAvailable: (id: string, newStatus: boolean) => void;
 }
+
+
+interface CustomToggleProps {
+  value: boolean;
+  onToggle: () => void;
+}
+
+const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  const toggle = () => {
+    Animated.timing(anim, {
+      toValue: value ? 0 : 1,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+
+    onToggle();
+  };
+
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 22],
+  });
+
+  const backgroundColor = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#d1d5db', '#ea580c'],
+  });
+
+  return (
+    <Pressable onPress={toggle}>
+      <Animated.View
+        style={{
+          width: 50,
+          height: 26,
+          borderRadius: 20,
+          backgroundColor,
+          padding: 2,
+        }}
+      >
+        <Animated.View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            backgroundColor: '#fff',
+            transform: [{ translateX }],
+            elevation: 2,
+          }}
+        />
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+
 
 const MenuItemCard: React.FC<MenuItemCardProps> = ({ 
   item, 
@@ -78,11 +137,10 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           {/* Availability Toggle */}
           <View style={styles.toggleRow}>
             <Text style={styles.availText}>Availability</Text>
-            <Switch
-              value={item.available}
-              onValueChange={() => onToggleAvailable(item._id, !item.available)}
-              trackColor={{ true: '#ea580c' }}
-            />
+            <CustomToggle
+  value={item.available}
+  onToggle={() => onToggleAvailable(item._id, !item.available)}
+/>
           </View>
 
           {/* Action Buttons */}

@@ -46,7 +46,7 @@ const Cart = () => {
   const [customerName, setCustomerName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // 🌟 FIX 1: EXPLICIT NAVIGATION INSTEAD OF goBack()
+  //  FIX 1: EXPLICIT NAVIGATION INSTEAD OF goBack()
   const handleBackToMenu = () => {
     if (restaurantId) {
       navigation.navigate('GuestMenu', { 
@@ -157,8 +157,6 @@ const Cart = () => {
           }
         })
         .catch((error: any) => {
-          // User cancelled or payment failed
-          // Error code 2 means user cancelled. Code 0 means integration issue.
           console.log("Razorpay Error:", error.code, error.description);
           Toast.show({ type: 'error', text1: error.description || 'Payment cancelled or failed.' });
           setIsProcessing(false);
@@ -199,7 +197,7 @@ const Cart = () => {
       </View>
 
       {/* KEEP THE REST OF YOUR RETURN JSX EXACTLY AS YOU HAD IT */}
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.titleRow}>
           <Text style={styles.mainTitle}>Your <Text style={{ color: '#ea580c' }}>Cart</Text></Text>
           <View style={styles.totalBox}>

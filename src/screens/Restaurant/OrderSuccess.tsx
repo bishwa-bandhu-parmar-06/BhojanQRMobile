@@ -107,7 +107,7 @@ const OrderSuccess = () => {
       let file = await RNHTMLtoPDF.convert(options);
       
       if (file.filePath) {
-        // 🌟 FIX: Trigger native share and show success toast
+        //  FIX: Trigger native share and show success toast
         await Share.open({ url: `file://${file.filePath}`, title: "Share Receipt PDF" });
         Toast.show({ type: "success", text1: "PDF shared successfully!" });
       }
@@ -118,7 +118,7 @@ const OrderSuccess = () => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ alignItems: "center", paddingVertical: 40 }}>
+    <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={{ alignItems: "center", paddingVertical: 40 }}>
       <View style={styles.banner}>
         <CheckCircle size={64} color="#22c55e" style={{ marginBottom: 8 }} />
         <Text style={styles.title}>Payment Successful!</Text>

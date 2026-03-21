@@ -1,18 +1,21 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
+import React, { useState , useEffect} from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert , Modal} from 'react-native';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
-
+import DeviceInfo from 'react-native-device-info';
 // Redux & Auth Imports
 import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../Features/AuthSlice';
 import { logoutAdmin } from '../API/adminApi';
 import { logoutRestaurant } from '../API/restaurentApi';
+import CustomModal from './CustomModal';
+
 
 const CustomSidebar = (props: any) => {
   const { state, navigation } = props;
   const dispatch = useDispatch();
-
+  const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [appVersion, setAppVersion] = useState("1.0.0");
   // 1. Get Auth State from Redux
   const { isAuthenticated, user } = useSelector((reduxState: any) => reduxState.auth);
 
@@ -20,8 +23,14 @@ const CustomSidebar = (props: any) => {
   const displayName = user?.restaurantName || user?.name || "Profile";
   const firstChar = displayName.charAt(0).toUpperCase();
 
+  useEffect(() => {
+    const version = DeviceInfo.getVersion();
+    setAppVersion(version);
+  }, []);
+
   // 3. Handle Logout Logic
   const handleLogoutClick = async () => {
+    setLogoutModalVisible(false);
     try {
       if (user?.role === "admin") await logoutAdmin();
       if (user?.role === "restaurant") await logoutRestaurant();
@@ -64,6 +73,17 @@ const CustomSidebar = (props: any) => {
 
   return (
     <View style={styles.container}>
+      <CustomModal
+        visible={isLogoutModalVisible}
+        title="Log Out?"
+        message="Are you sure you want to securely log out of your account?"
+        type="logout"
+        confirmText="Yes, Log Out"
+        cancelText="Cancel"
+        onConfirm={handleLogoutClick}
+        onCancel={() => setLogoutModalVisible(false)}
+      />
+
       {/* SIDEBAR HEADER */}
       <View style={styles.headerArea}>
         {/* CLOSE BUTTON */}
@@ -138,16 +158,7 @@ const CustomSidebar = (props: any) => {
         {isAuthenticated && (
           <TouchableOpacity
             style={[styles.menuItem, styles.logoutItem]}
-            onPress={() => {
-              Alert.alert(
-                "Log Out",
-                "Are you sure you want to log out?",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Log Out", onPress: handleLogoutClick, style: "destructive" }
-                ]
-              );
-            }}
+            onPress={() => setLogoutModalVisible(true)}
             activeOpacity={0.7}
           >
             <View style={[styles.iconContainer, styles.logoutIconContainer]}>
@@ -162,7 +173,7 @@ const CustomSidebar = (props: any) => {
 
       {/* SIDEBAR FOOTER */}
       <View style={styles.footerArea}>
-        <Text style={styles.versionText}>Version 1.0.0</Text>
+        <Text style={styles.versionText}>Version {appVersion}</Text>
       </View>
     </View>
   );
@@ -328,6 +339,82 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     fontWeight: '500',
+  },
+  //  MODAL STYLES
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fef2f2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#4b5563',
+  },
+  modalConfirmButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modalConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 });
 

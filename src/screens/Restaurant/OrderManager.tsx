@@ -71,7 +71,7 @@ const OrderManager = () => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.contentContainer}>
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={styles.headerTextContainer}>

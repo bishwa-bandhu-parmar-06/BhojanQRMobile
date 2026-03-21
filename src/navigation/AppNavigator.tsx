@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';import { createDrawerNavigator } from '@react-navigation/drawer';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -29,6 +30,10 @@ import CustomSidebar from '../components/CustomSidebar';
 const Drawer = createDrawerNavigator();
 const Stack = createNativeStackNavigator();
 
+interface AppNavigatorProps {
+  onReady?: () => void;
+}
+
 const linking: LinkingOptions<any> = {
   prefixes: ['https://bhojanqr-mjos.onrender.com', 'bhojanqr://'], 
   config: {
@@ -47,8 +52,12 @@ const linking: LinkingOptions<any> = {
 
 // 1. DRAWER NAVIGATOR
 const DrawerNavigator = () => {
+
+  const user = useSelector((state: any) => state.auth?.user);
+
   return (
     <Drawer.Navigator 
+    initialRouteName={user ? "RestaurantDashboard" : "Home"}
       drawerContent={(props) => <CustomSidebar {...props} />} 
       screenOptions={{
         drawerPosition: "right",
@@ -60,8 +69,11 @@ const DrawerNavigator = () => {
       }}
     >
       <Drawer.Screen name="Home" component={HomeScreen} />
-      <Drawer.Screen name="Login/Signup" component={RestaurentAuth} />
-      <Drawer.Screen name="RestaurantDashboard" component={RestaurantDashboard} />
+      {user ? (
+        <Drawer.Screen name="RestaurantDashboard" component={RestaurantDashboard} />
+      ) : (
+        <Drawer.Screen name="Login/Signup" component={RestaurentAuth} />
+      )}
       <Drawer.Screen name="About" component={About} />
       <Drawer.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
       <Drawer.Screen name="Help" component={Help} />
@@ -79,10 +91,10 @@ const DrawerNavigator = () => {
 };
 
 // 2. ROOT STACK NAVIGATOR 
-const AppNavigator = () => {
+const AppNavigator = ({ onReady }: AppNavigatorProps) => {
   return (
     // Pass the linking configuration here!
-    <NavigationContainer linking={linking}> 
+    <NavigationContainer linking={linking} onReady={onReady}> 
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         
         {/* Main App (Includes Header & Sidebar) */}
