@@ -3,7 +3,7 @@ import api from './axiosInstance';
 export const getAppVersion = async () => {
   try {
     const response = await api.get('/config/app-version');
-    console.log('Response App Version : ', response.data);
+    // console.log('Response App Version : ', response.data);
     return response;
   } catch (error) {
     console.error('Error fetching app version : ', error);

@@ -157,8 +157,47 @@ const Cart = () => {
           }
         })
         .catch((error: any) => {
-          console.log("Razorpay Error:", error.code, error.description);
-          Toast.show({ type: 'error', text1: error.description || 'Payment cancelled or failed.' });
+          console.log("Razorpay Error Full:", JSON.stringify(error));
+          
+          let errorTitle = "Payment Failed";
+          let errorDesc = "Something went wrong. Please try again.";
+
+          // 1. Extract inner error object safely
+          const innerError = error?.error || {};
+          
+          // 2. Check all possible places where the error code/reason might be hiding
+          const errorCode = error?.code || innerError?.code;
+          const errorReason = innerError?.reason;
+          const descriptionString = error?.description || "";
+
+          // 🌟 SMART ERROR HANDLING (Nested checking)
+          if (
+            errorCode === 2 || 
+            errorCode === '2' || 
+            errorCode === 'BAD_REQUEST_ERROR' || 
+            errorReason === 'payment_error' ||
+            errorReason === 'payment_cancelled' ||
+            descriptionString.includes('BAD_REQUEST_ERROR') ||
+            descriptionString.toLowerCase().includes('cancel')
+          ) {
+            errorTitle = "Payment Cancelled";
+            errorDesc = "You closed the payment window or authentication failed.";
+          } 
+          // Custom genuine errors from Bank (if description is readable and not "undefined")
+          else if (innerError?.description && innerError.description !== 'undefined') {
+            errorDesc = innerError.description;
+          } 
+          else if (typeof descriptionString === 'string' && !descriptionString.startsWith('{') && descriptionString !== 'undefined') {
+            errorDesc = descriptionString;
+          }
+
+          // Show Toast with clear meaning
+          Toast.show({ 
+            type: 'error', 
+            text1: errorTitle, 
+            text2: errorDesc 
+          });
+          
           setIsProcessing(false);
         });
 

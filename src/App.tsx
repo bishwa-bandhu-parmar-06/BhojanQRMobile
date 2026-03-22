@@ -55,7 +55,7 @@ useEffect(() => {
     const splashTimeout = setTimeout(async () => {
       try {
         await BootSplash.hide({ fade: true });
-        console.log("Failsafe: BootSplash force hidden!");
+        console.log("Failsazfe: BootSplash force hidden!");
       } catch (e) {
         console.log("BootSplash Error:", e);
       }
