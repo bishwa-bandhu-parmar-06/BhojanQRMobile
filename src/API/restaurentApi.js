@@ -56,3 +56,10 @@ export const deleteQR = id => {
 export const getPublicRestaurantDetails = id => {
   return api.get(`${BASE_URL}/public/${id}`);
 };
+
+// Verifies a scanned table QR's HMAC signature before letting a guest order
+export const validateTable = (id, table, sig) => {
+  return api.get(`${BASE_URL}/public/${id}/validate-table`, {
+    params: { table, sig },
+  });
+};

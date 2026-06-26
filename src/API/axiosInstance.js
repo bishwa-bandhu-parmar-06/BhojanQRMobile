@@ -1,36 +1,29 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 import { store } from '../App/store';
 import { logout } from '../Features/AuthSlice';
-
-// DEFINE YOUR ENVIRONMENTS HERE
-const LOCAL_IP = '192.168.1.10';
-const ENV = {
-  PROD_URL: 'https://bhojanqr-mjos.onrender.com/api',
-  DEV_ANDROID_URL: `http://${LOCAL_IP}:3000/api`,
-  DEV_IOS_URL: `http://${LOCAL_IP}:3000/api`,
-};
-
-// SMART URL SELECTOR
-const getBaseUrl = () => {
-  if (__DEV__) {
-    console.log('Running in DEVELOPMENT mode');
-    return Platform.OS === 'android' ? ENV.DEV_ANDROID_URL : ENV.DEV_IOS_URL;
-  }
-
-  console.log('Running in PRODUCTION mode');
-  return ENV.PROD_URL;
-};
+import { getToken, clearToken } from '../utils/tokenStorage';
+import { API_BASE_URL } from '../config/env';
 
 // CREATE AXIOS INSTANCE
 const api = axios.create({
-  baseURL: getBaseUrl(),
-  withCredentials: true,
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
   },
+});
+
+// Attach the Bearer token from secure storage. RN's cookie handling is
+// unreliable across app restarts, but the backend's authMiddleware already
+// accepts "Authorization: Bearer <token>" ahead of cookies, so this is all
+// that's needed.
+api.interceptors.request.use(config => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 // 4. INTERCEPTORS
@@ -42,6 +35,7 @@ api.interceptors.response.use(
 
       if (status === 401) {
         console.log('Session expired or unauthorized. Dispatching logout...');
+        clearToken();
         store.dispatch(logout());
       }
 

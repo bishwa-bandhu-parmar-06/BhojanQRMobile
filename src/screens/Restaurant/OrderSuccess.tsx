@@ -8,7 +8,7 @@ import Share from "react-native-share";
 import RNHTMLtoPDF from 'react-native-html-to-pdf';
 import { CameraRoll } from "@react-native-camera-roll/camera-roll";
 import Toast from "react-native-toast-message";
-import { Copy, Image as ImageIcon, FileText, CheckCircle, Home } from "lucide-react-native";
+import { Copy, Image as ImageIcon, FileText, CheckCircle, Home, MapPin } from "lucide-react-native";
 import Clipboard from '@react-native-clipboard/clipboard';
 
 import { getPublicRestaurantDetails } from "../../API/restaurentApi";
@@ -189,6 +189,14 @@ const OrderSuccess = () => {
           </TouchableOpacity>
         </View>
         
+        <TouchableOpacity
+          onPress={() => navigation.navigate("TrackOrder", { token: paymentId })}
+          style={styles.trackBtn}
+        >
+          <MapPin size={18} color="#fff" />
+          <Text style={styles.trackBtnText}>Track this Order</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => navigation.navigate("Home")} style={styles.homeBtn}>
           <Home size={16} color="#6b7280" />
           <Text style={styles.homeBtnText}>Return to Home</Text>
@@ -236,6 +244,8 @@ const styles = StyleSheet.create({
   imgBtnText: { color: "#ea580c", fontWeight: "bold" },
   pdfBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#ea580c", paddingVertical: 14, borderRadius: 12 },
   pdfBtnText: { color: "#fff", fontWeight: "bold" },
+  trackBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#16a34a", paddingVertical: 14, borderRadius: 12 },
+  trackBtnText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
   homeBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12 },
   homeBtnText: { color: "#6b7280", fontWeight: "bold" }
 });

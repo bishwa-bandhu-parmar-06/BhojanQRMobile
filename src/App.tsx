@@ -10,6 +10,7 @@ import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 import { TouchableOpacity, View } from 'react-native';
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import VersionCheckWrapper from './components/VersionCheckWrapper';
+import { loadToken } from './utils/tokenStorage';
 
 
 const toastConfig = {
@@ -52,6 +53,7 @@ const toastConfig = {
 
 const App = () => {
 useEffect(() => {
+    loadToken();
     const splashTimeout = setTimeout(async () => {
       try {
         await BootSplash.hide({ fade: true });

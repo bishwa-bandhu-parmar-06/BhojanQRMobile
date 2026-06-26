@@ -14,6 +14,10 @@ import PrivacyPolicy from '../screens/PrivacyPolicy';
 import RestaurantDashboard from '../screens/Restaurant/RestaurantDashboard';
 import Menu from "../screens/Menu"
 
+// Customer Screens
+import CustomerAuth from '../screens/Customer/CustomerAuth';
+import CustomerDashboard from '../screens/Customer/CustomerDashboard';
+
 // Admin Screens
 import AdminAuth from '../screens/Admin/AdminAuth';
 import AdminDashboard from '../screens/Admin/AdminDashboard'; 
@@ -55,13 +59,24 @@ const DrawerNavigator = () => {
 
   const user = useSelector((state: any) => state.auth?.user);
 
+  // Auth is shared across roles (restaurant/customer/admin), so the landing
+  // screen for a logged-in user depends on which role they hold - a customer
+  // landing on the restaurant owner's dashboard (or vice versa) would be
+  // broken, not just wrong-looking.
+  const initialRoute =
+    user?.role === 'restaurant'
+      ? 'RestaurantDashboard'
+      : user?.role === 'customer'
+      ? 'CustomerDashboard'
+      : 'Home';
+
   return (
-    <Drawer.Navigator 
-    initialRouteName={user ? "RestaurantDashboard" : "Home"}
-      drawerContent={(props) => <CustomSidebar {...props} />} 
+    <Drawer.Navigator
+    initialRouteName={initialRoute}
+      drawerContent={(props) => <CustomSidebar {...props} />}
       screenOptions={{
         drawerPosition: "right",
-        header: () => <Header />, 
+        header: () => <Header />,
         drawerStyle: {
           width: 280,
           backgroundColor: 'transparent',
@@ -69,11 +84,15 @@ const DrawerNavigator = () => {
       }}
     >
       <Drawer.Screen name="Home" component={HomeScreen} />
-      {user ? (
-        <Drawer.Screen name="RestaurantDashboard" component={RestaurantDashboard} />
-      ) : (
-        <Drawer.Screen name="Login/Signup" component={RestaurentAuth} />
-      )}
+      {/* Always register every role's landing screen - the navigator tree is
+          built once per render, but navigate() calls (e.g. right after login)
+          can fire before a Redux-driven re-render lands, so a screen that's
+          only conditionally mounted based on `user.role` may not exist yet
+          at the moment something tries to navigate to it. */}
+      <Drawer.Screen name="RestaurantDashboard" component={RestaurantDashboard} />
+      <Drawer.Screen name="CustomerDashboard" component={CustomerDashboard} />
+      <Drawer.Screen name="Login/Signup" component={RestaurentAuth} />
+      <Drawer.Screen name="CustomerAuth" component={CustomerAuth} />
       <Drawer.Screen name="About" component={About} />
       <Drawer.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
       <Drawer.Screen name="Help" component={Help} />
@@ -85,7 +104,7 @@ const DrawerNavigator = () => {
       <Drawer.Screen name="Cart" component={Cart} />
       <Drawer.Screen name="OrderSuccess" component={OrderSuccess} />
       <Drawer.Screen name="TrackOrder" component={TrackOrder} />
-      
+
     </Drawer.Navigator>
   );
 };

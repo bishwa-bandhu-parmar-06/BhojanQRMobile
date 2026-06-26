@@ -15,7 +15,8 @@ import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 
 // @ts-ignore
 import { Camera } from 'react-native-camera-kit';
-import CustomModal from './CustomModal'; 
+import CustomModal from './CustomModal';
+import { validateTable } from '../API/restaurentApi';
 
 const { height, width } = Dimensions.get('window');
 
@@ -24,9 +25,12 @@ const FloatingQRScanner = () => {
   
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [showInvalidQrModal, setShowInvalidQrModal] = useState(false);
+  const [invalidQrMessage, setInvalidQrMessage] = useState(
+    "This is not a BhojanQR. Please scan a valid restaurant menu QR code.",
+  );
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-  
-  const isProcessing = useRef(false); 
+
+  const isProcessing = useRef(false);
 
 
   useEffect(() => {
@@ -74,36 +78,58 @@ const FloatingQRScanner = () => {
   };
 
   //  FIX 1: Delay Hata Diya! Ab error instantly aayega.
-  const handleInvalidQR = () => {
+  const handleInvalidQR = (message?: string) => {
+    setInvalidQrMessage(
+      message ||
+        "This is not a BhojanQR. Please scan a valid restaurant menu QR code.",
+    );
     setIsScannerOpen(false); // Camera instantly band
     setShowInvalidQrModal(true); // Popup instantly chalu
   };
 
-  const onReadCode = (event: any) => {
-    if (isProcessing.current) return; 
-    
+  const onReadCode = async (event: any) => {
+    if (isProcessing.current) return;
+
     isProcessing.current = true; // Lock
 
     const scannedUrl = event.nativeEvent.codeStringValue;
 
     if (scannedUrl.includes("bhojanqr") || scannedUrl.includes("menu")) {
-      setIsScannerOpen(false); 
+      setIsScannerOpen(false);
       try {
         const parts = scannedUrl.split('menu/');
-        if (parts.length > 1) {
-          const restOfUrl = parts[1];
-          const restaurantId = restOfUrl.split('?')[0]; 
-          
-          navigation.navigate("GuestMenu", { restaurantId: restaurantId });
+        if (parts.length <= 1) {
+          handleInvalidQR();
+          return;
+        }
+
+        const restOfUrl = parts[1];
+        const [restaurantId, queryString] = restOfUrl.split('?');
+        const params = new URLSearchParams(queryString || '');
+        const table = params.get('table');
+        const sig = params.get('sig');
+
+        if (!restaurantId || !table || !sig) {
+          handleInvalidQR();
+          return;
+        }
+
+        const res = await validateTable(restaurantId, table, sig);
+        if (res.data?.success) {
+          navigation.navigate("GuestMenu", { restaurantId, table });
           // Note: Successful scan par lock kholne ki zaroorat nahi hai, page hi change ho jayega.
         } else {
-          handleInvalidQR();
+          handleInvalidQR("This table's QR code could not be verified. Please ask staff for a fresh one.");
         }
-      } catch (error) {
-        handleInvalidQR();
+      } catch (error: any) {
+        const serverMsg = error?.response?.data?.message;
+        handleInvalidQR(
+          serverMsg ||
+            "This table's QR code could not be verified. Please ask staff for a fresh one.",
+        );
       }
     } else {
-      handleInvalidQR(); 
+      handleInvalidQR();
     }
   };
 
@@ -134,11 +160,11 @@ const FloatingQRScanner = () => {
         onConfirm={() => setShowPermissionModal(false)}
       />
 
-      <CustomModal 
+      <CustomModal
         visible={showInvalidQrModal}
         type="error"
         title="Invalid QR Code"
-        message="This is not a BhojanQR. Please scan a valid restaurant menu QR code."
+        message={invalidQrMessage}
         confirmText="Okay"
         //  FIX 2: Jab user Okay dabaye, toh wapas lock khol do taaki dobara scan ho sake
         onConfirm={() => {

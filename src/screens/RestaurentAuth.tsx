@@ -18,6 +18,7 @@ import { useDispatch } from "react-redux";
 // Make sure these paths are correct for your React Native project structure
 import { loginSuccess } from "../Features/AuthSlice";
 import { registerRestaurant, loginRestaurant } from "../API/restaurentApi";
+import { setToken } from "../utils/tokenStorage";
 
 const RestaurentAuth = () => {
   const navigation = useNavigation<any>();
@@ -95,6 +96,9 @@ const RestaurentAuth = () => {
         });
 
         if (response.data.success) {
+          if (response.data.token) {
+            await setToken(response.data.token);
+          }
           const userData = response.data.data || response.data.restaurant;
           if (userData) {
             dispatch(loginSuccess({ user: userData }));

@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -31,6 +30,7 @@ import { useDispatch } from 'react-redux';
 import { loginSuccess } from '../../Features/AuthSlice';
 
 import { registerAdmin, loginAdmin } from '../../API/adminApi';
+import { setToken } from '../../utils/tokenStorage';
 
 const AdminAuth = () => {
   const navigation = useNavigation<any>();
@@ -87,7 +87,7 @@ const AdminAuth = () => {
 
       if (data.success) {
         if (data.token) {
-          await AsyncStorage.setItem('adminToken', data.token);
+          await setToken(data.token);
         }
 
         const userData = data.admin || data.user || data.data;

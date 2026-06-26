@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,13 +10,11 @@ import {
   Keyboard,
   Platform,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import {
   Package,
-  Clock,
-  CheckCircle,
   ChevronRight,
   ArrowLeft,
   User,
@@ -24,20 +22,33 @@ import {
   Coffee,
   Timer,
   Utensils,
-  ChefHat,
+  CheckCircle,
 } from "lucide-react-native";
 
 // Adjust path based on your folder structure
-import { getOrderByToken } from "../API/orderApi"; 
+import { getOrderByToken } from "../API/orderApi";
+import { useOrderSocket } from "../hooks/useOrderSocket";
+import { ORDER_STATUS_FLOW, CANCELLED_STATUS } from "../constants/orderStatus";
 
 const TrackOrder = () => {
   const navigation = useNavigation<any>();
-  const [token, setToken] = useState("");
+  const route = useRoute<any>();
+  const [token, setToken] = useState(route.params?.token || "");
   const [order, setOrder] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSearch = async () => {
-    if (!token.trim()) {
+  const liveUpdate = useOrderSocket(order?._id, order?.razorpayPaymentId || token);
+
+  useEffect(() => {
+    if (liveUpdate?.status) {
+      setOrder((prev: any) => (prev ? { ...prev, status: liveUpdate.status } : prev));
+      Toast.show({ type: "success", text1: `Order status: ${liveUpdate.status}` });
+    }
+  }, [liveUpdate]);
+
+  const handleSearch = async (searchToken?: string) => {
+    const tokenToUse = (searchToken ?? token).trim();
+    if (!tokenToUse) {
       Toast.show({ type: "error", text1: "Please enter a valid Order Token." });
       return;
     }
@@ -46,10 +57,10 @@ const TrackOrder = () => {
     setIsLoading(true);
 
     try {
-      const res = await getOrderByToken(token);
+      const res = await getOrderByToken(tokenToUse);
       const orderData = res.data?.data || res.data;
       setOrder(orderData);
-      Toast.show({ type: "success", text1: "Status updated!" });
+      setToken(tokenToUse);
     } catch (err: any) {
       console.error("Tracking Error:", err);
       const errorMsg = err.response?.data?.message || "Order not found. Check your token.";
@@ -59,23 +70,16 @@ const TrackOrder = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed": return "#10b981"; // Emerald 500
-      case "Preparing": return "#f97316"; // Orange 500
-      case "Processing": return "#f59e0b"; // Amber 500
-      default: return "#94a3b8"; // Slate 400
+  // Auto-search when arriving from OrderSuccess's "Track this order" button.
+  useEffect(() => {
+    if (route.params?.token) {
+      handleSearch(route.params.token);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.token]);
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "Completed": return <CheckCircle size={24} color={getStatusColor(status)} />;
-      case "Preparing": return <ChefHat size={24} color={getStatusColor(status)} />;
-      case "Processing": return <Timer size={24} color={getStatusColor(status)} />;
-      default: return <Clock size={24} color={getStatusColor(status)} />;
-    }
-  };
+  const isCancelled = order?.status === "Cancelled";
+  const currentStepIndex = ORDER_STATUS_FLOW.findIndex(s => s.value === order?.status);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -111,9 +115,9 @@ const TrackOrder = () => {
             />
           </View>
           
-          <TouchableOpacity 
-            style={[styles.searchBtn, isLoading && styles.searchBtnDisabled]} 
-            onPress={handleSearch}
+          <TouchableOpacity
+            style={[styles.searchBtn, isLoading && styles.searchBtnDisabled]}
+            onPress={() => handleSearch()}
             disabled={isLoading}
           >
             {isLoading ? (
@@ -138,41 +142,63 @@ const TrackOrder = () => {
                 <Text style={styles.cardTitle}>Order Status</Text>
               </View>
 
-              <View style={styles.statusRow}>
-                <Text style={styles.statusLabel}>Current Status:</Text>
-                <View style={styles.statusBadgeRow}>
-                  {getStatusIcon(order.status)}
-                  <Text style={[styles.statusValue, { color: getStatusColor(order.status) }]}>
-                    {order.status}
-                  </Text>
+              {isCancelled ? (
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusLabel}>Current Status:</Text>
+                  <View style={styles.statusBadgeRow}>
+                    <CANCELLED_STATUS.Icon size={24} color={CANCELLED_STATUS.color} />
+                    <Text style={[styles.statusValue, { color: CANCELLED_STATUS.color }]}>
+                      {CANCELLED_STATUS.label}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-
-              {/* Progress Bar */}
-              <View style={styles.progressWrapper}>
-                <View style={styles.progressLabels}>
-                  <Text style={styles.progressText}>
-                    {order.status === "Completed" ? "Delivered" : "In Progress"}
-                  </Text>
-                  <Text style={styles.progressText}>
-                    {order.status === "Completed" ? "100%" : "50%"}
-                  </Text>
+              ) : (
+                <View style={styles.stepperWrapper}>
+                  {ORDER_STATUS_FLOW.map((step, idx) => {
+                    const isDone = currentStepIndex >= 0 && idx <= currentStepIndex;
+                    const isCurrent = idx === currentStepIndex;
+                    return (
+                      <View key={step.value} style={styles.stepperRow}>
+                        <View style={styles.stepperIconCol}>
+                          <View
+                            style={[
+                              styles.stepDot,
+                              { backgroundColor: isDone ? step.color : '#e2e8f0' },
+                            ]}
+                          >
+                            <step.Icon size={14} color={isDone ? '#fff' : '#94a3b8'} />
+                          </View>
+                          {idx < ORDER_STATUS_FLOW.length - 1 && (
+                            <View
+                              style={[
+                                styles.stepLine,
+                                { backgroundColor: idx < currentStepIndex ? step.color : '#e2e8f0' },
+                              ]}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            styles.stepLabel,
+                            isCurrent && { color: step.color, fontWeight: '800' },
+                            isDone && !isCurrent && { color: '#1e293b' },
+                          ]}
+                        >
+                          {step.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
-                <View style={styles.progressBarBg}>
-                  <View 
-                    style={[
-                      styles.progressBarFill, 
-                      { width: order.status === "Completed" ? '100%' : '50%' }
-                    ]} 
-                  />
-                </View>
-              </View>
+              )}
 
               <View style={styles.messageBox}>
                 <Text style={styles.messageText}>
-                  {order.status === "Completed" 
-                    ? "✅ Your order has been delivered! Enjoy your meal!" 
-                    : "🕐 Your order is being prepared. We'll notify you when it's ready."}
+                  {isCancelled
+                    ? "This order was cancelled."
+                    : order.status === "Completed"
+                    ? "✅ Your order has been delivered! Enjoy your meal!"
+                    : "🕐 Your order is being prepared. We'll notify you the moment it moves."}
                 </Text>
               </View>
             </View>
@@ -292,11 +318,12 @@ const styles = StyleSheet.create({
   statusBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusValue: { fontSize: 16, fontWeight: "bold" },
 
-  progressWrapper: { marginBottom: 16 },
-  progressLabels: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  progressText: { fontSize: 12, fontWeight: "700", color: "#64748b" },
-  progressBarBg: { height: 8, backgroundColor: "#f1f5f9", borderRadius: 4, overflow: "hidden" },
-  progressBarFill: { height: "100%", backgroundColor: "#ea580c", borderRadius: 4 },
+  stepperWrapper: { marginBottom: 16 },
+  stepperRow: { flexDirection: "row", alignItems: "flex-start", minHeight: 44 },
+  stepperIconCol: { alignItems: "center", width: 32 },
+  stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  stepLine: { width: 2, flex: 1, minHeight: 14, marginVertical: 2 },
+  stepLabel: { fontSize: 14, fontWeight: "600", color: "#94a3b8", marginLeft: 12, paddingTop: 4 },
 
   messageBox: { backgroundColor: "#f8fafc", padding: 12, borderRadius: 12 },
   messageText: { fontSize: 13, color: "#475569", lineHeight: 20 },

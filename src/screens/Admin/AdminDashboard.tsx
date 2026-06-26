@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../Features/AuthSlice';
 import { getAdminProfile, logoutAdmin } from '../../API/adminApi';
+import { clearToken } from '../../utils/tokenStorage';
 
 // Icons for Tab Bar
 import { LayoutDashboard, Store, Users, User, Settings, LogOut } from 'lucide-react-native';
@@ -35,6 +36,7 @@ const AdminDashboard = () => {
       setAdmin(res.data.data || res.data.admin);
     } catch (error: any) {
       if (error.response?.status === 401 || error.response?.status === 403) {
+        clearToken();
         dispatch(logout());
         setSessionExpiredModalVisible(true);
       }
@@ -49,6 +51,7 @@ const AdminDashboard = () => {
     setLogoutModalVisible(false);
     try {
       await logoutAdmin();
+      await clearToken();
       dispatch(logout());
       navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'Home' } }] });
     } catch (error) {

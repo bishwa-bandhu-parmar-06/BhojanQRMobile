@@ -8,6 +8,8 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../Features/AuthSlice';
 import { logoutAdmin } from '../API/adminApi';
 import { logoutRestaurant } from '../API/restaurentApi';
+import { logoutCustomer } from '../API/customerApi';
+import { clearToken } from '../utils/tokenStorage';
 import CustomModal from './CustomModal';
 
 
@@ -34,9 +36,11 @@ const CustomSidebar = (props: any) => {
     try {
       if (user?.role === "admin") await logoutAdmin();
       if (user?.role === "restaurant") await logoutRestaurant();
+      if (user?.role === "customer") await logoutCustomer();
     } catch (error) {
       console.error("Logout failed on backend", error);
     }
+    await clearToken();
     dispatch(logout());
     navigation.closeDrawer();
     navigation.navigate("Home");
@@ -52,10 +56,16 @@ const CustomSidebar = (props: any) => {
 
     if (!isAuthenticated) {
       // Guest Menu
+      items.push({ route: 'CustomerAuth', label: 'My Account', icon: 'user-circle' });
       items.push({ route: 'Login/Signup', label: 'Partner with Us', icon: 'store' });
     } else {
       // Logged In Menu
-      const dashboardRoute = user?.role === 'admin' ? 'AdminDashboard' : 'RestaurantDashboard';
+      const dashboardRoute =
+        user?.role === 'admin'
+          ? 'AdminDashboard'
+          : user?.role === 'customer'
+          ? 'CustomerDashboard'
+          : 'RestaurantDashboard';
       items.push({ route: dashboardRoute, label: 'My Dashboard', icon: 'columns' });
     }
 
@@ -113,7 +123,11 @@ const CustomSidebar = (props: any) => {
           <View style={styles.profileInfo}>
             <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
             <Text style={styles.profileRole}>
-              {user.role === 'admin' ? 'Admin Portal' : 'Restaurant Partner'}
+              {user.role === 'admin'
+                ? 'Admin Portal'
+                : user.role === 'customer'
+                ? 'Customer'
+                : 'Restaurant Partner'}
             </Text>
           </View>
         </View>

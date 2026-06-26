@@ -27,6 +27,13 @@ import {
 
 import { getPublicMenu } from '../../API/menuApi';
 import { addToCart } from '../../Features/CartSlice';
+import useNow from '../../hooks/useNow';
+import CallWaiterButton from '../../components/CallWaiterButton';
+import {
+  evaluateBestOfferForItem,
+  formatCountdown,
+  type Offer,
+} from '../../utils/pricingEngine';
 
 interface MenuItem {
   _id: string;
@@ -50,7 +57,10 @@ const GuestMenu = () => {
 
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
   const [restaurantName, setRestaurantName] = useState('Loading...');
-  
+  const [activeOffers, setActiveOffers] = useState<Offer[]>([]);
+  const [restaurantTimezone, setRestaurantTimezone] = useState('Asia/Kolkata');
+  const now = useNow(1000);
+
   //  Pagination & Loading States
   const [loading, setLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -77,8 +87,13 @@ const GuestMenu = () => {
 
       const LIMIT = 8;
       // Make sure your getPublicMenu accepts page and limit arguments!
-      const res = await getPublicMenu(restaurantId, pageNumber, LIMIT); 
+      const res = await getPublicMenu(restaurantId, pageNumber, LIMIT);
       const newItems: MenuItem[] = res.data?.data || [];
+
+      setActiveOffers(res.data?.activeOffers || []);
+      if (res.data?.restaurantTimezone) {
+        setRestaurantTimezone(res.data.restaurantTimezone);
+      }
 
       if (newItems.length > 0 && newItems[0].restaurant) {
         setRestaurantName(newItems[0].restaurant.restaurantName);
@@ -141,38 +156,74 @@ const GuestMenu = () => {
   const categories = ['All', ...new Set(allMenuItems.map((item) => item.category))];
 
   // --- RENDERERS ---
-  const renderItem = ({ item }: { item: MenuItem }) => (
-    <View style={[styles.card, viewMode === 'list' ? styles.cardList : styles.cardGrid]}>
-      <View style={[styles.imageContainer, viewMode === 'list' ? styles.imageContainerList : styles.imageContainerGrid]}>
-        <Image source={{ uri: item.imageUrl }} style={styles.image} />
-        <View style={styles.priceBadge}>
-          <Text style={styles.priceText}>₹{item.price}</Text>
+  const renderItem = ({ item }: { item: MenuItem }) => {
+    const bestOffer = activeOffers.length
+      ? evaluateBestOfferForItem({
+          offers: activeOffers,
+          item,
+          at: now,
+          timezone: restaurantTimezone,
+        })
+      : null;
+
+    const handleAdd = () => {
+      const cartItem = bestOffer
+        ? {
+            ...item,
+            price: bestOffer.discountedPrice,
+            originalPrice: bestOffer.basePrice,
+            discountAmount: bestOffer.discountAmount,
+            offerId: bestOffer.offerId,
+            offerName: bestOffer.offerName,
+            lockedAt: Date.now(),
+          }
+        : item;
+      dispatch(addToCart(cartItem));
+      Toast.show({ type: 'success', text1: `${item.name} added!` });
+    };
+
+    return (
+      <View style={[styles.card, viewMode === 'list' ? styles.cardList : styles.cardGrid]}>
+        <View style={[styles.imageContainer, viewMode === 'list' ? styles.imageContainerList : styles.imageContainerGrid]}>
+          <Image source={{ uri: item.imageUrl }} style={styles.image} />
+          <View style={styles.priceBadge}>
+            {bestOffer ? (
+              <>
+                <Text style={styles.priceTextStrike}>₹{bestOffer.basePrice}</Text>
+                <Text style={styles.priceText}>₹{bestOffer.discountedPrice}</Text>
+              </>
+            ) : (
+              <Text style={styles.priceText}>₹{item.price}</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.cardContent}>
+          <View style={styles.categoryBadge}>
+            <Tag size={10} color="#ea580c" />
+            <Text style={styles.categoryText}>{item.category.toUpperCase()}</Text>
+          </View>
+          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+          <Text style={styles.itemDesc} numberOfLines={2}>
+            {item.description || "Freshly prepared for you."}
+          </Text>
+
+          {bestOffer && (
+            <View style={styles.offerBadge}>
+              <Text style={styles.offerBadgeText} numberOfLines={1}>
+                ⚡ {bestOffer.offerName} · ends in {formatCountdown(bestOffer.endsAt.getTime() - now.getTime())}
+              </Text>
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
+            <Plus size={16} color="#ea580c" />
+            <Text style={styles.addBtnText}>Add</Text>
+          </TouchableOpacity>
         </View>
       </View>
-
-      <View style={styles.cardContent}>
-        <View style={styles.categoryBadge}>
-          <Tag size={10} color="#ea580c" />
-          <Text style={styles.categoryText}>{item.category.toUpperCase()}</Text>
-        </View>
-        <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.itemDesc} numberOfLines={2}>
-          {item.description || "Freshly prepared for you."}
-        </Text>
-
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => {
-            dispatch(addToCart(item));
-            Toast.show({ type: 'success', text1: `${item.name} added!` });
-          }}
-        >
-          <Plus size={16} color="#ea580c" />
-          <Text style={styles.addBtnText}>Add</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   //  Footer for Infinite Scroll
   const renderFooter = () => {
@@ -212,11 +263,12 @@ const GuestMenu = () => {
           <Text style={styles.restaurantName} numberOfLines={1}>{restaurantName}</Text>
         </View>
         <View style={styles.headerRight}>
+          {table ? <CallWaiterButton restaurantId={restaurantId} tableNumber={table} /> : null}
           <TouchableOpacity onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} style={styles.iconBtn}>
             {viewMode === 'grid' ? <List size={20} color="#4b5563" /> : <LayoutGrid size={20} color="#4b5563" />}
           </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => setShowFilters(!showFilters)} 
+          <TouchableOpacity
+            onPress={() => setShowFilters(!showFilters)}
             style={[styles.iconBtn, showFilters && styles.iconBtnActive]}
           >
             <Filter size={20} color={showFilters ? "#ea580c" : "#4b5563"} />
@@ -341,8 +393,11 @@ const styles = StyleSheet.create({
   imageContainerList: { width: 140, height: '100%' },
   imageContainerGrid: { width: '100%', height: 140 },
   image: { width: '100%', height: '100%', resizeMode: 'cover' },
-  priceBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  priceBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
   priceText: { fontSize: 12, fontWeight: '900', color: '#111827' },
+  priceTextStrike: { fontSize: 11, fontWeight: '600', color: '#9ca3af', textDecorationLine: 'line-through' },
+  offerBadge: { backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fdba74', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 6 },
+  offerBadgeText: { fontSize: 10, fontWeight: '700', color: '#c2410c' },
   cardContent: { padding: 12, flex: 1, justifyContent: 'space-between' },
   categoryBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   categoryText: { fontSize: 10, fontWeight: 'bold', color: '#ea580c' },

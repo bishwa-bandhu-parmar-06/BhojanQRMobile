@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,8 +29,16 @@ import {
   IndianRupee,
 } from 'lucide-react-native';
 
-import { removeFromCart, updateQuantity, clearCart } from '../Features/CartSlice';
+import { removeFromCart, updateQuantity, updateItemPricing, clearCart } from '../Features/CartSlice';
 import { createOrder, verifyPayment } from '../API/orderApi';
+import { getPublicMenu } from '../API/menuApi';
+import { RAZORPAY_KEY } from '../config/env';
+import useNow from '../hooks/useNow';
+import {
+  evaluateBestOfferForItem,
+  formatCountdown,
+  PRICE_LOCK_DURATION_MS,
+} from '../utils/pricingEngine';
 
 const Cart = () => {
   const route = useRoute<any>();
@@ -41,10 +49,94 @@ const Cart = () => {
 
   const cart = useSelector((state: any) => state.cart?.items || []);
   const totalAmount = useSelector((state: any) => state.cart?.totalAmount || 0);
+  const authUser = useSelector((state: any) => state.auth?.user);
 
   const [tableNumber, setTableNumber] = useState(urlTableNumber || '');
-  const [customerName, setCustomerName] = useState('');
+  const [customerName, setCustomerName] = useState(
+    authUser?.role === 'customer' ? authUser?.name || '' : '',
+  );
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // This screen can stay mounted in the nav stack across a login/logout
+  // (e.g. the user opens Cart, then signs in from elsewhere and comes
+  // back), so the useState initializer above only catches the name at the
+  // very first mount. Re-sync whenever the logged-in customer changes,
+  // unless the field no longer matches what was last auto-filled - i.e.
+  // the customer typed their own value, which should never be clobbered.
+  const lastAutoFilledName = useRef(
+    authUser?.role === 'customer' ? authUser?.name || '' : '',
+  );
+  useEffect(() => {
+    if (authUser?.role !== 'customer') return;
+    const nextName = authUser?.name || '';
+    setCustomerName(prev =>
+      prev === lastAutoFilledName.current ? nextName : prev,
+    );
+    lastAutoFilledName.current = nextName;
+  }, [authUser]);
+
+  // 1s tick drives the per-item "price locked for Xm Ys" countdown; the
+  // separate 10s tick below drives the actual expiry check, so an expired
+  // lock isn't re-fetched-and-recomputed every single second.
+  const now = useNow(1000);
+  const expiryCheckTick = useNow(10000);
+  const recalculatingRef = useRef(false);
+
+  // A cart line's discounted price is only honorable for PRICE_LOCK_DURATION_MS
+  // after it was added - never silently charge more than what the customer
+  // saw, but never honor it forever either. Once expired, re-evaluate against
+  // the restaurant's current offers/prices (the backend re-verifies all of
+  // this independently at checkout regardless; this just keeps the displayed
+  // total honest).
+  useEffect(() => {
+    const expiredItems = cart.filter(
+      (item: any) => item.lockedAt && Date.now() - item.lockedAt > PRICE_LOCK_DURATION_MS,
+    );
+    if (expiredItems.length === 0 || recalculatingRef.current || !restaurantId) return;
+    recalculatingRef.current = true;
+
+    (async () => {
+      try {
+        const res = await getPublicMenu(restaurantId);
+        const freshItems: any[] = res.data.data || [];
+        const offers = res.data.activeOffers || [];
+        const timezone = res.data.restaurantTimezone || 'Asia/Kolkata';
+        const itemsById = new Map<string, any>(freshItems.map((mi: any) => [mi._id, mi]));
+        const nowDate = new Date();
+
+        let anyChanged = false;
+        expiredItems.forEach((cartItem: any) => {
+          const freshItem = itemsById.get(cartItem._id);
+          if (!freshItem) return;
+          const best = offers.length
+            ? evaluateBestOfferForItem({ offers, item: freshItem, at: nowDate, timezone })
+            : null;
+          const newPrice = best ? best.discountedPrice : parseFloat(freshItem.price);
+          if (newPrice !== cartItem.price) anyChanged = true;
+
+          dispatch(
+            updateItemPricing({
+              cartLineId: cartItem.cartLineId,
+              price: newPrice,
+              originalPrice: best ? best.basePrice : null,
+              discountAmount: best ? best.discountAmount : null,
+              offerId: best ? best.offerId : null,
+              offerName: best ? best.offerName : null,
+              lockedAt: best ? Date.now() : null,
+            }),
+          );
+        });
+
+        if (anyChanged) {
+          Toast.show({ type: 'info', text1: 'Offer pricing expired. Cart has been updated.' });
+        }
+      } catch {
+        // Best-effort - checkout still recomputes server-side either way.
+      } finally {
+        recalculatingRef.current = false;
+      }
+    })();
+  }, [expiryCheckTick, cart, restaurantId, dispatch]);
 
   //  FIX 1: EXPLICIT NAVIGATION INSTEAD OF goBack()
   const handleBackToMenu = () => {
@@ -82,6 +174,13 @@ const Cart = () => {
         name: item.name,
         price: item.price,
         imageUrl: item.imageUrl,
+        note: item.note || '',
+        // Backend never trusts `price` above - it only uses this offerId +
+        // lockedAt as a claim, independently re-verified against the
+        // offer's real, current state before any discount is applied.
+        ...(item.offerId && item.lockedAt
+          ? { offerId: item.offerId, lockedAt: new Date(item.lockedAt).toISOString() }
+          : {}),
       }));
 
       // 1. Create Order on your backend to get Razorpay Order ID
@@ -105,7 +204,7 @@ const Cart = () => {
         description: `Order for Table ${tableNumber}`,
         image: 'https://cdn-icons-png.flaticon.com/512/3703/3703377.png', 
         currency: currency || 'INR',
-        key: 'rzp_test_JM1WaEQuOzhIpS', 
+        key: RAZORPAY_KEY,
         amount: amount,
         name: 'BhojanQR',
         order_id: razorpayOrderId,
@@ -247,33 +346,48 @@ const Cart = () => {
 
         {/* CART ITEMS */}
         <View style={styles.itemsList}>
-          {cart.map((item: any) => (
-            <View key={item._id} style={styles.cartCard}>
-              <Image source={{ uri: item.imageUrl }} style={styles.cartImage} />
-              <View style={styles.cartDetails}>
-                <Text style={styles.cartItemName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.cartItemPrice}>₹{item.price}</Text>
-                
-                <View style={styles.cartActionsRow}>
-                  <View style={styles.qtyControl}>
-                    <TouchableOpacity onPress={() => dispatch(updateQuantity({ id: item._id, quantity: Math.max(1, item.quantity - 1) }))} style={styles.qtyBtn}>
-                      <Minus size={14} color="#4b5563" />
-                    </TouchableOpacity>
-                    <Text style={styles.qtyText}>{item.quantity}</Text>
-                    <TouchableOpacity onPress={() => dispatch(updateQuantity({ id: item._id, quantity: item.quantity + 1 }))} style={styles.qtyBtn}>
-                      <Plus size={14} color="#4b5563" />
+          {cart.map((item: any) => {
+            const lockRemaining = item.lockedAt
+              ? PRICE_LOCK_DURATION_MS - (now.getTime() - item.lockedAt)
+              : null;
+            return (
+              <View key={item.cartLineId} style={styles.cartCard}>
+                <Image source={{ uri: item.imageUrl }} style={styles.cartImage} />
+                <View style={styles.cartDetails}>
+                  <Text style={styles.cartItemName} numberOfLines={1}>{item.name}</Text>
+                  <View style={styles.cartPriceRow}>
+                    {item.offerId && item.originalPrice ? (
+                      <Text style={styles.cartItemPriceStrike}>₹{item.originalPrice}</Text>
+                    ) : null}
+                    <Text style={styles.cartItemPrice}>₹{item.price}</Text>
+                  </View>
+                  {item.offerId && lockRemaining != null && lockRemaining > 0 && (
+                    <Text style={styles.lockText}>
+                      {item.offerName} locked for {formatCountdown(lockRemaining)}
+                    </Text>
+                  )}
+
+                  <View style={styles.cartActionsRow}>
+                    <View style={styles.qtyControl}>
+                      <TouchableOpacity onPress={() => dispatch(updateQuantity({ id: item.cartLineId, quantity: Math.max(1, item.quantity - 1) }))} style={styles.qtyBtn}>
+                        <Minus size={14} color="#4b5563" />
+                      </TouchableOpacity>
+                      <Text style={styles.qtyText}>{item.quantity}</Text>
+                      <TouchableOpacity onPress={() => dispatch(updateQuantity({ id: item.cartLineId, quantity: item.quantity + 1 }))} style={styles.qtyBtn}>
+                        <Plus size={14} color="#4b5563" />
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity onPress={() => {
+                      dispatch(removeFromCart(item.cartLineId));
+                      Toast.show({ type: 'success', text1: 'Item removed' });
+                    }} style={styles.deleteBtn}>
+                      <Trash2 size={18} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity onPress={() => {
-                    dispatch(removeFromCart(item._id));
-                    Toast.show({ type: 'success', text1: 'Item removed' });
-                  }} style={styles.deleteBtn}>
-                    <Trash2 size={18} color="#ef4444" />
-                  </TouchableOpacity>
                 </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         {/* CHECKOUT FORM */}
@@ -348,7 +462,10 @@ const styles = StyleSheet.create({
   cartImage: { width: 80, height: 80, borderRadius: 12, backgroundColor: '#f3f4f6' },
   cartDetails: { flex: 1, marginLeft: 12, justifyContent: 'space-between' },
   cartItemName: { fontSize: 16, fontWeight: 'bold', color: '#1f2937' },
+  cartPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cartItemPrice: { fontSize: 16, fontWeight: '900', color: '#ea580c' },
+  cartItemPriceStrike: { fontSize: 13, fontWeight: '600', color: '#9ca3af', textDecorationLine: 'line-through' },
+  lockText: { fontSize: 11, fontWeight: '600', color: '#c2410c', marginTop: 2 },
   cartActionsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   qtyControl: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 },
   qtyBtn: { padding: 8, backgroundColor: '#f9fafb', borderRadius: 8 },

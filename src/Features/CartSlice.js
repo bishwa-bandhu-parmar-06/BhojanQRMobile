@@ -1,8 +1,8 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, nanoid } from '@reduxjs/toolkit';
 
 const initialState = {
-  items: [], 
-  totalQuantity: 0, 
+  items: [],
+  totalQuantity: 0,
   totalAmount: 0,
 };
 
@@ -12,14 +12,29 @@ const cartSlice = createSlice({
   reducers: {
     addToCart: (state, action) => {
       const newItem = action.payload;
-      const existingItem = state.items.find(item => item._id === newItem._id);
+      const note = newItem.note || '';
+      // Same dish with a different note, or added under a different Happy
+      // Hour offer (or no offer at all), is kept as its own cart line
+      // instead of merging - otherwise two batches priced differently would
+      // collapse into one line at a single (wrong) price.
+      const existingItem = state.items.find(
+        item =>
+          item._id === newItem._id &&
+          (item.note || '') === note &&
+          (item.offerId || null) === (newItem.offerId || null),
+      );
 
       state.totalQuantity++;
       state.totalAmount += Number(newItem.price);
 
       if (!existingItem) {
+        // cartLineId is a stable, randomly-generated identity assigned once
+        // at creation - it must NOT be recomputed from the note later, or
+        // editing a note would change the React key.
         state.items.push({
           ...newItem,
+          note,
+          cartLineId: nanoid(),
           quantity: 1,
         });
       } else {
@@ -27,24 +42,42 @@ const cartSlice = createSlice({
       }
     },
     removeFromCart: (state, action) => {
-      const id = action.payload;
-      const existingItem = state.items.find(item => item._id === id);
+      const cartLineId = action.payload;
+      const existingItem = state.items.find(item => item.cartLineId === cartLineId);
 
       if (existingItem) {
         state.totalQuantity -= existingItem.quantity;
         state.totalAmount -= Number(existingItem.price) * existingItem.quantity;
-        state.items = state.items.filter(item => item._id !== id);
+        state.items = state.items.filter(item => item.cartLineId !== cartLineId);
       }
     },
     updateQuantity: (state, action) => {
-      const { id, quantity } = action.payload;
-      const existingItem = state.items.find(item => item._id === id);
+      const { id: cartLineId, quantity } = action.payload;
+      const existingItem = state.items.find(item => item.cartLineId === cartLineId);
 
       if (existingItem) {
         const quantityDifference = quantity - existingItem.quantity;
         state.totalQuantity += quantityDifference;
         state.totalAmount += Number(existingItem.price) * quantityDifference;
         existingItem.quantity = quantity;
+      }
+    },
+    // Used when a cart line's 15-minute price lock expires - overwrites the
+    // pricing fields with a freshly-evaluated price (and clears or replaces
+    // the offer metadata) without touching quantity or note.
+    updateItemPricing: (state, action) => {
+      const { cartLineId, price, originalPrice, discountAmount, offerId, offerName, lockedAt } =
+        action.payload;
+      const existingItem = state.items.find(item => item.cartLineId === cartLineId);
+      if (existingItem) {
+        const priceDifference = price - existingItem.price;
+        state.totalAmount += priceDifference * existingItem.quantity;
+        existingItem.price = price;
+        existingItem.originalPrice = originalPrice;
+        existingItem.discountAmount = discountAmount;
+        existingItem.offerId = offerId;
+        existingItem.offerName = offerName;
+        existingItem.lockedAt = lockedAt;
       }
     },
     clearCart: state => {
@@ -55,6 +88,6 @@ const cartSlice = createSlice({
   },
 });
 
-export const { addToCart, removeFromCart, updateQuantity, clearCart } =
+export const { addToCart, removeFromCart, updateQuantity, updateItemPricing, clearCart } =
   cartSlice.actions;
 export default cartSlice.reducer;
