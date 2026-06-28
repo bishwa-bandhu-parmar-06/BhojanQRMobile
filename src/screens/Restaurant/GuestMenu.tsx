@@ -242,6 +242,9 @@ const GuestMenu = () => {
       : null;
 
     const handleAdd = () => {
+      // Auto-fills the order note from the customer's saved "special notes"
+      // preference (e.g. "Make it Jain") - mirrors the website's
+      // PublicMenu.jsx so the customer doesn't have to retype it every time.
       const cartItem = bestOffer
         ? {
             ...item,
@@ -251,8 +254,9 @@ const GuestMenu = () => {
             offerId: bestOffer.offerId,
             offerName: bestOffer.offerName,
             lockedAt: Date.now(),
+            note: prefs?.specialNotes || '',
           }
-        : item;
+        : { ...item, note: prefs?.specialNotes || '' };
       dispatch(addToCart(cartItem));
       Toast.show({ type: 'success', text1: `${item.name} added!` });
     };
