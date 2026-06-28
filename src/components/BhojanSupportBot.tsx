@@ -49,7 +49,7 @@ const BhojanSupportBot = () => {
     try {
       const data = await sendLandingChatMessage(userMessage);
       setMessages(prev => [...prev, { sender: 'bot', text: data.reply }]);
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Network issue. Please try again.' });
       setMessages(prev => [
         ...prev,

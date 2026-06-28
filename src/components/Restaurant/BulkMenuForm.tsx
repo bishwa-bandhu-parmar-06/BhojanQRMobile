@@ -106,7 +106,7 @@ const BulkMenuForm: React.FC<BulkMenuFormProps> = ({ onCancel, onSuccess }) => {
       }
       Toast.show({ type: "success", text1: `Added ${successCount} items!` });
       onSuccess();
-    } catch (error: any) { 
+    } catch {
       Toast.show({ type: "error", text1: `Stopped. Uploaded ${successCount} items.` });
     } finally {
       setIsUploading(false);

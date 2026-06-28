@@ -59,7 +59,7 @@ const PendingApprovalScreen = () => {
       } else {
         Toast.show({ type: "info", text1: "Application is still under review." });
       }
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to check status. Please try again." });
     } finally {
       setIsChecking(false);
@@ -69,7 +69,7 @@ const PendingApprovalScreen = () => {
   const handleLogout = async () => {
     try {
       await logoutRestaurant();
-    } catch (error) {
+    } catch {
       // Same as the website - logging out client-side regardless of
       // whether the server call succeeds avoids stranding a pending
       // owner who can't reach the backend.

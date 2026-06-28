@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { 
-  View, 
+  View,
   Text,
-  ActivityIndicator, 
-  StyleSheet, 
-  Alert,
+  StyleSheet,
   TouchableOpacity,
   ScrollView,
   RefreshControl
@@ -109,9 +107,12 @@ const RestaurantDashboard = () => {
     }
   };
 
-  // Initial Load
+  // Initial Load - intentionally mount-only, like the tab-default effect
+  // below; fetchProfile/isOwner/user are all settled by the time PersistGate
+  // finishes rehydrating, before this ever mounts.
   useEffect(() => {
     fetchProfile().finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, dispatch]);
 
   // Land on the first tab this user (owner or staff) is actually allowed to
@@ -123,21 +124,25 @@ const RestaurantDashboard = () => {
   }, [isOwner, user?.permissions]);
 
   useEffect(() => {
-    if (user && restaurant) {
-      setRestaurant((prev: any) => ({
-        ...(prev || {}),
+    if (!user) return;
+    setRestaurant((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
         restaurantName: user.restaurantName || user.name || prev?.restaurantName,
         ownerName: user.ownerName || prev?.ownerName,
         mobile: user.mobile || prev?.mobile,
-      }));
-    }
+      };
+    });
   }, [user]);
 
+  // Intentionally mount-stable - see Initial Load effect above.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchProfile(); 
+    await fetchProfile();
     setRefreshKey(prev => prev + 1);
     setRefreshing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleConfirmLogout = async () => {

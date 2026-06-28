@@ -7,7 +7,7 @@ import {
 import RNShare from "react-native-share"; 
 import { captureRef } from "react-native-view-shot"; 
 import RNFS from "react-native-fs"; 
-import { QrCode, Printer, Trash2, Download, Share2 } from "lucide-react-native";
+import { QrCode, Trash2, Download, Share2 } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 
 import { getSavedQRs, generateAndSaveQRs, deleteQR } from "../../API/restaurentApi";
@@ -37,7 +37,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
       setLoadError(false);
       const res = await getSavedQRs();
       setSavedQRs(res.data.data);
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to load saved QR codes." });
       setLoadError(true);
     } finally {
@@ -51,7 +51,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
       await deleteQR(id);
       setSavedQRs((prev: any[]) => prev.filter((qr: any) => qr._id !== id));
       Toast.show({ type: "success", text1: "QR Code deleted successfully" });
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to delete QR code" });
     } finally {
       setDeletingId(null);
@@ -79,7 +79,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
         return [...prev, ...newlyAdded].sort((a: any, b: any) => a.tableNumber - b.tableNumber);
       });
       Toast.show({ type: "success", text1: "QR Codes generated!" });
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to generate QRs" });
     } finally {
       setIsGenerating(false);
@@ -100,7 +100,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
         title: `Table ${tableNumber} QR Code`,
         message: `Printable QR Code for Table ${tableNumber}`,
       });
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to prepare QR for sharing." });
     }
   };

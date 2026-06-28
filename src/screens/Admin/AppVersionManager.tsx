@@ -32,7 +32,7 @@ const AppVersionManager = () => {
       if (res.data?.data) {
         setFormData(res.data.data);
       }
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Failed to load version config' });
       setLoadError(true);
     } finally {
@@ -45,7 +45,7 @@ const AppVersionManager = () => {
     try {
       await updateAppVersion(formData);
       Toast.show({ type: 'success', text1: 'App Version Updated Successfully! 🚀' });
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Failed to update version' });
     } finally {
       setSaving(false);

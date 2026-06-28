@@ -15,13 +15,6 @@ import { useNavigation } from "@react-navigation/native";
 const AboutPage = () => {
   const navigation = useNavigation<any>();
 
-  const features = [
-    { icon: "qrcode", title: "QR Code Gen", description: "Generate unique QR codes for each table instantly." },
-    { icon: "book-open", title: "Digital Menu", description: "Upload and manage your restaurant menu digitally." },
-    { icon: "mobile-alt", title: "Scan & Order", description: "Customers order directly from their smartphones." },
-    { icon: "users", title: "Table Management", description: "Efficiently manage tables and track orders." },
-  ];
-
   const stats = [
     { icon: "award", value: "50+", label: "Restaurants" },
     { icon: "user-friends", value: "10k+", label: "Happy Customers" },

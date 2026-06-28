@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   FlatList,
-  Platform,
   RefreshControl,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -100,7 +99,7 @@ const GuestMenu = () => {
   const [priceRange, setPriceRange] = useState<string>('3000');
 
   //  Fetch Menu Logic with Pagination
-  const fetchMenu = async (pageNumber: number, isRefresh = false) => {
+  const fetchMenu = useCallback(async (pageNumber: number, isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -139,14 +138,14 @@ const GuestMenu = () => {
         return [...prev, ...filteredNewItems];
       });
       
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Failed to load menu.' });
     } finally {
       setLoading(false);
       setRefreshing(false);
       setIsFetchingMore(false);
     }
-  };
+  }, [restaurantId]);
 
   // Initial Fetch - validates the table's HMAC signature first (if a table
   // param was passed) before ever calling fetchMenu, same order as the
@@ -165,14 +164,14 @@ const GuestMenu = () => {
         }
         setIsValidTable(true);
         await fetchMenu(1);
-      } catch (error) {
+      } catch {
         setIsValidTable(false);
       } finally {
         setCheckingTable(false);
       }
     };
     if (restaurantId) fetchMenuAndValidateTable();
-  }, [restaurantId, table, sig]);
+  }, [restaurantId, table, sig, fetchMenu]);
 
   // Live Happy Hour updates: unlike the website (which refetches the whole,
   // unpaginated menu on this event), only the offers/timezone are
@@ -196,7 +195,7 @@ const GuestMenu = () => {
   const onRefresh = useCallback(() => {
     setPage(1);
     fetchMenu(1, true);
-  }, [restaurantId]);
+  }, [fetchMenu]);
 
   // Load More logic for Infinite Scroll
   const handleLoadMore = () => {

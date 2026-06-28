@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import Toast from 'react-native-toast-message';
 import { logout } from '../../Features/AuthSlice';
 import { getAdminProfile, logoutAdmin } from '../../API/adminApi';
@@ -23,7 +23,6 @@ import BhojanQRLoader from '../../components/BhojanQRLoader';
 const AdminDashboard = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
-  const { user } = useSelector((state: any) => state.auth);
 
   // States
   const [admin, setAdmin] = useState<any>(null);
@@ -37,7 +36,7 @@ const AdminDashboard = () => {
   const [isSessionExpiredModalVisible, setSessionExpiredModalVisible] = useState(false);
 
   // Fetch Admin Profile
-  const fetchAdminData = async () => {
+  const fetchAdminData = useCallback(async () => {
     try {
       setLoadError(false);
       const res = await getAdminProfile();
@@ -52,11 +51,11 @@ const AdminDashboard = () => {
         setLoadError(true);
       }
     }
-  };
+  }, [dispatch]);
 
   useEffect(() => {
     fetchAdminData().finally(() => setIsLoading(false));
-  }, [navigation, dispatch]);
+  }, [fetchAdminData]);
 
   const onRefreshProfile = async () => {
     setRefreshingProfile(true);

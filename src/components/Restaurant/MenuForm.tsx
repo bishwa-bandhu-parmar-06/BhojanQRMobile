@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, Switch, Image, StyleSheet, ActivityIndicator } from "react-native";
 import Toast from "react-native-toast-message";
-import { Utensils, IndianRupee, AlignLeft, ImagePlus, Save, X, UploadCloud } from "lucide-react-native";
+import { Utensils, ImagePlus, Save } from "lucide-react-native";
 import { Picker } from "@react-native-picker/picker";
 import { launchImageLibrary } from "react-native-image-picker";
 import { addMenuItem, updateMenuItem } from "../../API/menuApi";
@@ -80,7 +80,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
       let res = menuItem ? await updateMenuItem(menuItem._id, dataToSend) : await addMenuItem(dataToSend);
       Toast.show({ type: "success", text1: `Menu item ${menuItem ? "updated" : "added"}!` });
       onSuccess(res.data.data);
-    } catch (error: any) { // FIX 4: Explicitly type the error as 'any'
+    } catch {
       Toast.show({ type: "error", text1: "Operation failed" });
     } finally {
       setIsSubmitting(false);

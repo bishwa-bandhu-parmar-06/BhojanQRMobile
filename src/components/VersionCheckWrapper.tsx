@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import CustomModal from './CustomModal';
 import { getAppVersion } from '../API/versionApi';

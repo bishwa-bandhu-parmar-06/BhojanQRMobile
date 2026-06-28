@@ -153,7 +153,7 @@ const VirtualWaiter = ({ restaurantId, menuItems = [] }: VirtualWaiterProps) => 
           Toast.show({ type: 'success', text1: 'Cart cleared completely!' });
         }
       }
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Bot side configuration error.' });
     } finally {
       setIsTyping(false);

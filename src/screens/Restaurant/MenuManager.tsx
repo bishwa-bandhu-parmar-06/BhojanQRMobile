@@ -39,7 +39,7 @@ const MenuManager = () => {
       const response = await getMyMenu();
       const items = response?.data?.menuItems || response?.data?.data || [];
       setMenuItems(items);
-    } catch (error: any) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to load menu items" });
       setLoadError(true);
     } finally {
@@ -71,7 +71,7 @@ const MenuManager = () => {
       await deleteMenuItem(id);
       Toast.show({ type: "success", text1: "Item deleted successfully!" });
       fetchMenuItems();
-    } catch (error: any) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to delete item" });
     }
   };
@@ -84,7 +84,7 @@ const MenuManager = () => {
         text1: `Item marked as ${newStatus ? "Available" : "Unavailable"}` 
       });
       fetchMenuItems();
-    } catch (error: any) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to update availability" });
     }
   };

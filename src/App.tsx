@@ -8,7 +8,7 @@ import { PersistGate } from 'redux-persist/integration/react';
 // Import your Redux store
 import { store , persistor} from './App/store'; 
 import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
-import { TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import VersionCheckWrapper from './components/VersionCheckWrapper';
 import AppStatusGuard from './components/system/AppStatusGuard';

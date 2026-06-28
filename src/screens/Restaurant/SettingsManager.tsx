@@ -122,7 +122,7 @@ const SettingsManager = ({ autoOpenAddDoc, onAutoOpenConsumed }: SettingsManager
       setAddresses(Array.isArray(data.address) ? data.address : data.address ? [data.address] : []);
       setLogoUrl(data.logoUrl || data.logo || null);
       setDocuments(Array.isArray(data.documents) ? data.documents : []);
-    } catch (error: any) { // FIX: Type error as any
+    } catch {
       Toast.show({ type: "error", text1: "Failed to load settings data" });
       setLoadError(true);
     } finally {

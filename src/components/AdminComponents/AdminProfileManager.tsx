@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
-import { User, Edit2, Save } from 'lucide-react-native';
+import { User, Edit2 } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import { useDispatch } from 'react-redux';
 import { updateAdminProfile } from '../../API/adminApi';
@@ -24,7 +24,7 @@ const AdminProfileManager = ({ admin, onRefreshParent }: { admin: any, onRefresh
         setEditMode(false);
         onRefreshParent(); 
       }
-    } catch (error: any) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Failed to update profile' });
     } finally {
       setIsUpdating(false);

@@ -12,7 +12,6 @@ import { Copy, Image as ImageIcon, FileText, CheckCircle, Home, MapPin } from "l
 import Clipboard from '@react-native-clipboard/clipboard';
 
 import { getPublicRestaurantDetails } from "../../API/restaurentApi";
-import { getPublicAdminContact } from "../../API/adminApi";
 
 const OrderSuccess = () => {
   const route = useRoute<any>();
@@ -33,7 +32,6 @@ const OrderSuccess = () => {
 
   const [restaurantEmail, setRestaurantEmail] = useState(initialEmail);
   const [restaurantName, setRestaurantName] = useState(initialRestaurantName);
-  const [adminEmail, setAdminEmail] = useState("Loading support email...");
 
   const formattedDate = new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   const formattedTime = new Date(date).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -46,13 +44,7 @@ const OrderSuccess = () => {
 
     const fetchPublicDetails = async () => {
       try {
-        const [adminRes, restRes] = await Promise.all([
-          getPublicAdminContact().catch(() => ({ data: { success: false } })),
-          getPublicRestaurantDetails(restaurantId).catch(() => ({ data: { success: false } })),
-        ]);
-
-        if (adminRes.data?.success) setAdminEmail(adminRes.data.data.email);
-        else setAdminEmail("support@bhojanqr.com");
+        const restRes = await getPublicRestaurantDetails(restaurantId);
 
         if (restRes.data?.success) {
           setRestaurantName(restRes.data.data.restaurantName || initialRestaurantName);
@@ -60,14 +52,13 @@ const OrderSuccess = () => {
         } else {
           setRestaurantEmail("contact@restaurant.com");
         }
-      } catch (error) {
-        setAdminEmail("support@bhojanqr.com");
+      } catch {
         setRestaurantEmail("contact@restaurant.com");
       }
     };
 
     if (restaurantId) fetchPublicDetails();
-  }, [route.params, restaurantId]);
+  }, [route.params, restaurantId, initialEmail, initialRestaurantName, navigation]);
 
   const handleCopyToken = () => {
     Clipboard.setString(paymentId);
@@ -79,7 +70,7 @@ const OrderSuccess = () => {
       const uri = await viewShotRef.current.capture();
       await CameraRoll.saveAsset(uri, { type: 'photo' });
       Toast.show({ type: "success", text1: "saved success" });
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to save image. Check permissions." });
     }
   };

@@ -56,7 +56,7 @@ const SalesReportPanel = () => {
         title: "Sales Report",
         failOnCancel: false,
       });
-    } catch (error: any) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to generate report. Please try again." });
     } finally {
       setIsDownloading(false);

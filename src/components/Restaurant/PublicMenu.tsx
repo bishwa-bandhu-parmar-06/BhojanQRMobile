@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ const PublicMenu = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showFilters, setShowFilters] = useState(false);
 
-  const fetchMenu = async () => {
+  const fetchMenu = useCallback(async () => {
     try {
       setLoading(true);
       setLoadError(false);
@@ -42,17 +42,17 @@ const PublicMenu = () => {
       setAllMenuItems(items);
       if (items.length > 0 && items[0].restaurant)
         setRestaurantName(items[0].restaurant.restaurantName);
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Failed to load menu.' });
       setLoadError(true);
     } finally {
       setLoading(false);
     }
-  };
+  }, [restaurantId]);
 
   useEffect(() => {
     if (restaurantId) fetchMenu();
-  }, [restaurantId]);
+  }, [restaurantId, fetchMenu]);
 
   const filteredItems = useMemo(() => {
     return allMenuItems.filter(

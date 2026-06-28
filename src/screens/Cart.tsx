@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Platform,
   BackHandler
 } from 'react-native';
 import { useRoute, useNavigation,useFocusEffect } from '@react-navigation/native';
@@ -26,7 +25,6 @@ import {
   User,
   Hash,
   ShoppingCart,
-  IndianRupee,
 } from 'lucide-react-native';
 
 import { removeFromCart, updateQuantity, updateItemPricing, clearCart } from '../Features/CartSlice';
@@ -146,28 +144,28 @@ const Cart = () => {
   }, [expiryCheckTick, cart, restaurantId, dispatch]);
 
   //  FIX 1: EXPLICIT NAVIGATION INSTEAD OF goBack()
-  const handleBackToMenu = () => {
+  const handleBackToMenu = useCallback(() => {
     if (restaurantId) {
-      navigation.navigate('GuestMenu', { 
-        restaurantId: restaurantId, 
-        table: tableNumber 
+      navigation.navigate('GuestMenu', {
+        restaurantId: restaurantId,
+        table: tableNumber
       });
     } else {
       navigation.navigate('Home');
     }
-  };
+  }, [navigation, restaurantId, tableNumber]);
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        handleBackToMenu(); 
-        return true; 
+        handleBackToMenu();
+        return true;
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
 
       return () => subscription.remove();
-      
-    }, [restaurantId, tableNumber])
+
+    }, [handleBackToMenu])
   );
   const handleProceed = async () => {
     if (!tableNumber || !customerName) return;
@@ -256,7 +254,7 @@ const Cart = () => {
             } else {
               Toast.show({ type: 'error', text1: 'Payment verification failed' });
             }
-          } catch (error) {
+          } catch {
             Toast.show({ type: 'error', text1: 'Error verifying payment' });
           } finally {
             setIsProcessing(false);

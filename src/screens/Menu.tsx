@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import NetInfo from "@react-native-community/netinfo"; 
 import Toast from "react-native-toast-message";
-import { Store, Tag,RefreshCw,WifiOff } from "lucide-react-native";
+import { Store, Tag,WifiOff } from "lucide-react-native";
 
 // Assume this is your API function
 import { getAllMenuItems } from "../API/menuApi";
@@ -184,7 +184,7 @@ const Menu: React.FC = () => {
     setPage(1);
     setHasMore(true);
     fetchMenu(1, true);
-  }, [isOffline]);
+  }, []);
 
   
 

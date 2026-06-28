@@ -72,7 +72,7 @@ const OverviewManager = () => {
           setBestSellingItem(best || null);
           setWorstSellingItem(worst || null);
         }
-      } catch (error) {
+      } catch {
         Toast.show({
           type: "error",
           text1: "Error",

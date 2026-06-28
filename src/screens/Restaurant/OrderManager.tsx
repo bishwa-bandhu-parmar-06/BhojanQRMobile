@@ -38,7 +38,7 @@ const OrderManager = () => {
       if (res.data.success) {
         setOrders(res.data.data);
       }
-    } catch (error: any) {
+    } catch {
       Toast.show({ type: "error", text1: "Failed to load orders" });
     } finally {
       setLoading(false);
@@ -128,7 +128,10 @@ const OrderManager = () => {
     })),
   ];
 
-  const visibleOrders = segmentedOrders[activeFilter] || [];
+  const visibleOrders = useMemo(
+    () => segmentedOrders[activeFilter] || [],
+    [segmentedOrders, activeFilter],
+  );
 
   // Customers can place multiple separate orders during one dining visit
   // (e.g. starters, then mains) - the backend tags every order from the same

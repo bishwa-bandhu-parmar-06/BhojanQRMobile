@@ -1,5 +1,5 @@
 import React, { useState , useEffect} from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert , Modal} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import DeviceInfo from 'react-native-device-info';

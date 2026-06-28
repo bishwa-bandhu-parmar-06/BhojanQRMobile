@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -41,8 +41,13 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
   onClose, 
   onUpdateStatus 
 }) => {
+  const [updatedStatus, setUpdatedStatus] = useState(order?.status ?? '');
+
+  useEffect(() => {
+    if (order) setUpdatedStatus(order.status);
+  }, [order]);
+
   if (!order) return null;
-  const [updatedStatus, setUpdatedStatus] = useState(order.status);
 
   const handleStatusChange = () => {
     if (updatedStatus !== order.status) {

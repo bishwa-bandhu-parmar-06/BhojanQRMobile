@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
   Modal,
 } from "react-native";
 import Toast from "react-native-toast-message";

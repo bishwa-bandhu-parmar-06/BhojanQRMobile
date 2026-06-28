@@ -26,7 +26,7 @@ const RestaurantRequestsManager = () => {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
 
-  const fetchRestaurants = async (isRefresh = false) => {
+  const fetchRestaurants = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setIsListLoading(true);
     try {
       let res;
@@ -34,22 +34,22 @@ const RestaurantRequestsManager = () => {
       else if (activeTab === 'approved') res = await getApprovedRestaurants();
       else res = await getRejectedRestaurants();
       setRestaurants(res.data?.data || []);
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Failed to load restaurant list' });
     } finally {
       setIsListLoading(false);
     }
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     fetchRestaurants();
-  }, [activeTab]);
+  }, [fetchRestaurants]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchRestaurants(true);
     setRefreshing(false);
-  }, [activeTab]);
+  }, [fetchRestaurants]);
 
   const handleStatusUpdate = async (id: string, action: 'approve' | 'reject') => {
     setActionId(id);
@@ -62,7 +62,7 @@ const RestaurantRequestsManager = () => {
         Toast.show({ type: 'info', text1: 'Restaurant Rejected' });
       }
       fetchRestaurants(false);
-    } catch (error) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Update failed' });
     } finally {
       setActionId(null);
