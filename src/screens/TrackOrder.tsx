@@ -29,6 +29,7 @@ import {
 import { getOrderByToken } from "../API/orderApi";
 import { useOrderSocket } from "../hooks/useOrderSocket";
 import { ORDER_STATUS_FLOW, CANCELLED_STATUS } from "../constants/orderStatus";
+import SectionError from "../components/SectionError";
 
 const TrackOrder = () => {
   const navigation = useNavigation<any>();
@@ -36,6 +37,7 @@ const TrackOrder = () => {
   const [token, setToken] = useState(route.params?.token || "");
   const [order, setOrder] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const liveUpdate = useOrderSocket(order?._id, order?.razorpayPaymentId || token);
 
@@ -55,6 +57,7 @@ const TrackOrder = () => {
 
     Keyboard.dismiss();
     setIsLoading(true);
+    setLoadError(false);
 
     try {
       const res = await getOrderByToken(tokenToUse);
@@ -65,6 +68,7 @@ const TrackOrder = () => {
       console.error("Tracking Error:", err);
       const errorMsg = err.response?.data?.message || "Order not found. Check your token.";
       Toast.show({ type: "error", text1: errorMsg });
+      setLoadError(true);
     } finally {
       setIsLoading(false);
     }
@@ -267,6 +271,10 @@ const TrackOrder = () => {
               </TouchableOpacity>
             </View>
 
+          </View>
+        ) : loadError ? (
+          <View style={styles.emptyState}>
+            <SectionError message="Couldn't fetch your order. Please try again." onRetry={() => handleSearch()} />
           </View>
         ) : (
           /* Empty State */

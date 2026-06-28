@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
+import Toast from 'react-native-toast-message';
 import { logout } from '../../Features/AuthSlice';
 import { getAdminProfile, logoutAdmin } from '../../API/adminApi';
 import { clearToken } from '../../utils/tokenStorage';
+import SectionError from '../../components/SectionError';
 
 // Icons for Tab Bar
-import { LayoutDashboard, Store, Users, User, Settings, LogOut } from 'lucide-react-native';
+import { LayoutDashboard, Store, Users, User, Settings, LogOut, Mail, Video } from 'lucide-react-native';
 
 // Components
 import CustomModal from '../../components/CustomModal';
 import RestaurantRequestsManager from '../../components/AdminComponents/RestaurantRequestsManager';
 import AdminProfileManager from "../../components/AdminComponents/AdminProfileManager";
+import NewsletterManager from '../../components/AdminComponents/NewsletterManager';
+import VideoTutorialsManager from '../../components/AdminComponents/VideoTutorialsManager';
 import AppVersionManager from './AppVersionManager';
+import BhojanQRLoader from '../../components/BhojanQRLoader';
 const AdminDashboard = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
@@ -23,7 +28,9 @@ const AdminDashboard = () => {
   // States
   const [admin, setAdmin] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('requests'); 
+  const [loadError, setLoadError] = useState(false);
+  const [refreshingProfile, setRefreshingProfile] = useState(false);
+  const [activeTab, setActiveTab] = useState('requests');
 
   // Modal States
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
@@ -32,6 +39,7 @@ const AdminDashboard = () => {
   // Fetch Admin Profile
   const fetchAdminData = async () => {
     try {
+      setLoadError(false);
       const res = await getAdminProfile();
       setAdmin(res.data.data || res.data.admin);
     } catch (error: any) {
@@ -39,6 +47,9 @@ const AdminDashboard = () => {
         clearToken();
         dispatch(logout());
         setSessionExpiredModalVisible(true);
+      } else {
+        Toast.show({ type: 'error', text1: 'Failed to load admin data.' });
+        setLoadError(true);
       }
     }
   };
@@ -46,6 +57,12 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchAdminData().finally(() => setIsLoading(false));
   }, [navigation, dispatch]);
+
+  const onRefreshProfile = async () => {
+    setRefreshingProfile(true);
+    await fetchAdminData();
+    setRefreshingProfile(false);
+  };
 
   const handleConfirmLogout = async () => {
     setLogoutModalVisible(false);
@@ -60,11 +77,14 @@ const AdminDashboard = () => {
   };
 
   if (isLoading) {
+    return <BhojanQRLoader message="Syncing Admin Access..." />;
+  }
+
+  if (loadError && !admin) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text style={styles.loadingText}>Syncing Admin Access...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <SectionError message="Failed to load admin data." onRetry={fetchAdminData} />
+      </SafeAreaView>
     );
   }
 
@@ -110,6 +130,8 @@ const AdminDashboard = () => {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollTabs}>
           <TabButton id="overview" label="Overview" icon={LayoutDashboard} />
           <TabButton id="requests" label="Restaurants" icon={Store} />
+          <TabButton id="newsletter" label="Newsletter" icon={Mail} />
+          <TabButton id="videos" label="Tutorials" icon={Video} />
           <TabButton id="users" label="Users" icon={Users} />
           <TabButton id="profile" label="Profile" icon={User} />
           <TabButton id="settings" label="Settings" icon={Settings} />
@@ -119,11 +141,27 @@ const AdminDashboard = () => {
       {/* MAIN CONTENT AREA */}
       <View style={styles.mainContent}>
         {/* Placeholders for future components */}
-        {activeTab === 'overview' && <View style={styles.placeholder}><Text>Overview Coming Soon</Text></View>}
-        {activeTab === 'users' && <View style={styles.placeholder}><Text>User Management Coming Soon</Text></View>}
+        {activeTab === 'overview' && (
+          <ScrollView
+            contentContainerStyle={styles.placeholder}
+            refreshControl={<RefreshControl refreshing={refreshingProfile} onRefresh={onRefreshProfile} colors={["#f97316"]} />}
+          >
+            <Text>Overview Coming Soon</Text>
+          </ScrollView>
+        )}
+        {activeTab === 'users' && (
+          <ScrollView
+            contentContainerStyle={styles.placeholder}
+            refreshControl={<RefreshControl refreshing={refreshingProfile} onRefresh={onRefreshProfile} colors={["#f97316"]} />}
+          >
+            <Text>User Management Coming Soon</Text>
+          </ScrollView>
+        )}
         
         {/* Active Components */}
         {activeTab === 'requests' && <RestaurantRequestsManager />}
+        {activeTab === 'newsletter' && <NewsletterManager />}
+        {activeTab === 'videos' && <VideoTutorialsManager />}
         {activeTab === 'profile' && <AdminProfileManager admin={admin} onRefreshParent={fetchAdminData} />}
 
         {activeTab === 'settings' && <AppVersionManager />}
@@ -148,7 +186,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: 'bold', color: '#64748b' },
   tabTextActive: { color: '#ffffff' },
   mainContent: { flex: 1, backgroundColor: '#f8fafc' },
-  placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+  placeholder: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' }
 });
 
 export default AdminDashboard;

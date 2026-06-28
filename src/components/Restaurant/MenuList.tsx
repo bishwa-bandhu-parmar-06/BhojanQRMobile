@@ -3,12 +3,12 @@ import {
   View,
   Text,
   FlatList,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 
 // FIX 1: Import the MenuItem interface we created in MenuItemCard
 import MenuItemCard, { MenuItem } from './MenuItemCard';
+import { MenuListSkeleton } from '../Skeleton';
 
 // FIX 2: Define exactly what props this component expects
 interface MenuListProps {
@@ -26,12 +26,12 @@ const MenuList: React.FC<MenuListProps> = ({
   onDelete, 
   onToggleAvailable 
 }) => {
-  // Professional Loading State
+  // Skeleton loading state - shaped like the real cards so the list
+  // doesn't visually "jump" once the data arrives.
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#ea580c" />
-        <Text style={styles.loadingText}>Loading your menu...</Text>
+      <View style={styles.skeletonWrap}>
+        <MenuListSkeleton />
       </View>
     );
   }
@@ -70,16 +70,9 @@ const MenuList: React.FC<MenuListProps> = ({
 };
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    marginTop: 16,
-    color: '#6b7280',
-    fontWeight: '500',
+  skeletonWrap: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
   },
   emptyState: {
     alignItems: 'center',
@@ -89,6 +82,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderRadius: 20,
     marginTop: 24,
+    marginHorizontal: 16,
     backgroundColor: '#ffffff',
   },
   emptyTitle: {
@@ -105,7 +99,8 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingVertical: 16,
-    gap: 16,
+    paddingHorizontal: 16,
+    gap: 12,
   },
 });
 

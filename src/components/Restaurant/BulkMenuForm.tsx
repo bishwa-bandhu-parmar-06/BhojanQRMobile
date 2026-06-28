@@ -168,7 +168,11 @@ const BulkMenuForm: React.FC<BulkMenuFormProps> = ({ onCancel, onSuccess }) => {
           </TouchableOpacity>
         </View>
         <TouchableOpacity onPress={handleBulkSubmit} disabled={isUploading} style={styles.submitBtn}>
-          {isUploading ? <ActivityIndicator color="#fff" /> : <><Save size={18} color="#fff" /><Text style={styles.submitText}>Upload All</Text></>}
+          {isUploading ? (
+            <><ActivityIndicator size="small" color="#fff" /><Text style={styles.submitText}>Uploading...</Text></>
+          ) : (
+            <><Save size={18} color="#fff" /><Text style={styles.submitText}>Upload All</Text></>
+          )}
         </TouchableOpacity>
       </View>
     </View>

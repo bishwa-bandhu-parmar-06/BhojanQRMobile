@@ -2,14 +2,13 @@ import React, { useRef } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   StyleSheet,
-  Switch,
 } from 'react-native';
 import { Animated, Pressable } from 'react-native';
 
 import { Pencil, Trash2, Tag } from 'lucide-react-native';
+import MenuImage from '../MenuImage';
 
 // FIX 1: Define the shape of the 'item' object
 export interface MenuItem {
@@ -31,12 +30,13 @@ interface MenuItemCardProps {
   onToggleAvailable: (id: string, newStatus: boolean) => void;
 }
 
-
 interface CustomToggleProps {
   value: boolean;
   onToggle: () => void;
 }
 
+// Compact switch (smaller than the old 50x26 version) so it fits the
+// single-row footer of the redesigned card without forcing extra height.
 const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -52,7 +52,7 @@ const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
 
   const translateX = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [2, 22],
+    outputRange: [2, 18],
   });
 
   const backgroundColor = anim.interpolate({
@@ -62,104 +62,63 @@ const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
 
   return (
     <Pressable onPress={toggle}>
-      <Animated.View
-        style={{
-          width: 50,
-          height: 26,
-          borderRadius: 20,
-          backgroundColor,
-          padding: 2,
-        }}
-      >
-        <Animated.View
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: 11,
-            backgroundColor: '#fff',
-            transform: [{ translateX }],
-            elevation: 2,
-          }}
-        />
+      <Animated.View style={[styles.toggleTrack, { backgroundColor }]}>
+        <Animated.View style={[styles.toggleThumb, { transform: [{ translateX }] }]} />
       </Animated.View>
     </Pressable>
   );
 };
 
-
-
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ 
-  item, 
-  onEdit, 
-  onDelete, 
-  onToggleAvailable 
+// Redesigned as a compact horizontal "digital menu" row - thumbnail on the
+// left, everything else stacked tightly on the right, icon-only actions -
+// so 3-4x more items fit on screen than the old full-width vertical card
+// (160px image + bordered Edit/Delete buttons) did.
+const MenuItemCard: React.FC<MenuItemCardProps> = ({
+  item,
+  onEdit,
+  onDelete,
+  onToggleAvailable,
 }) => {
   return (
-    <View style={styles.card}>
-      {/* 1. Image & Badge Section */}
-      <View style={styles.imageContainer}>
-        {/* We use a fallback empty string or default image if imageUrl is missing */}
-        <Image source={{ uri: item.imageUrl || '' }} style={styles.image} />
-
-        {/* Price Badge */}
-        <View style={styles.priceBadge}>
-          <Text style={styles.priceText}>₹{item.price}</Text>
-        </View>
-
-        {/* Out of Stock Overlay */}
+    <View style={[styles.card, !item.available && styles.cardUnavailable]}>
+      <View style={styles.imageWrap}>
+        <MenuImage uri={item.imageUrl} style={styles.image} />
         {!item.available && (
           <View style={styles.outOfStockOverlay}>
-            <View style={styles.outOfStockBadge}>
-              <Text style={styles.outOfStockText}>Out of Stock</Text>
-            </View>
+            <Text style={styles.outOfStockText}>OUT</Text>
           </View>
         )}
       </View>
 
-      {/* 2. Content Section */}
       <View style={styles.content}>
-        {/* Category */}
-        <View style={styles.categoryRow}>
-          <Tag size={12} color="#ea580c" />
-          <Text style={styles.categoryText}>{item.category}</Text>
+        <View style={styles.topRow}>
+          <View style={styles.categoryRow}>
+            <Tag size={10} color="#ea580c" />
+            <Text style={styles.categoryText} numberOfLines={1}>{item.category}</Text>
+          </View>
+          <Text style={styles.priceText}>₹{item.price}</Text>
         </View>
 
-        {/* Title & Description */}
-        <Text style={styles.itemName} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.description} numberOfLines={2}>
+        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.description} numberOfLines={1}>
           {item.description || 'No description provided.'}
         </Text>
 
-        {/* 3. Footer Controls */}
         <View style={styles.footer}>
-          {/* Availability Toggle */}
           <View style={styles.toggleRow}>
-            <Text style={styles.availText}>Availability</Text>
             <CustomToggle
-  value={item.available}
-  onToggle={() => onToggleAvailable(item._id, !item.available)}
-/>
+              value={item.available}
+              onToggle={() => onToggleAvailable(item._id, !item.available)}
+            />
+            <Text style={styles.availText}>{item.available ? 'Available' : 'Unavailable'}</Text>
           </View>
 
-          {/* Action Buttons */}
           <View style={styles.actionsRow}>
-            <TouchableOpacity
-              onPress={() => onEdit(item)}
-              style={styles.editBtn}
-            >
-              <Pencil size={14} color="#4b5563" />
-              <Text style={styles.actionText}>Edit</Text>
+            <TouchableOpacity onPress={() => onEdit(item)} style={styles.iconBtn}>
+              <Pencil size={15} color="#4b5563" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onDelete(item._id)}
-              style={styles.deleteBtn}
-            >
-              <Trash2 size={14} color="#ef4444" />
-              <Text style={[styles.actionText, { color: '#ef4444' }]}>
-                Delete
-              </Text>
+            <TouchableOpacity onPress={() => onDelete(item._id)} style={[styles.iconBtn, styles.iconBtnDanger]}>
+              <Trash2 size={15} color="#ef4444" />
             </TouchableOpacity>
           </View>
         </View>
@@ -170,62 +129,60 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: 'row',
+    gap: 12,
     backgroundColor: '#fff',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#f3f4f6',
-    overflow: 'hidden',
+    padding: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  imageContainer: {
-    height: 160,
+  cardUnavailable: {
+    opacity: 0.7,
+  },
+  imageWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
     position: 'relative',
   },
   image: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#f3f4f6', // Added a slight background color in case image is loading/missing
-  },
-  priceBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  priceText: {
-    fontWeight: 'bold',
-    color: '#ea580c',
+    backgroundColor: '#f3f4f6',
   },
   outOfStockOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  outOfStockBadge: {
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
   },
   outOfStockText: {
     color: '#fff',
     fontWeight: 'bold',
+    fontSize: 10,
+    letterSpacing: 0.5,
   },
   content: {
-    padding: 16,
+    flex: 1,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 8,
+    flex: 1,
   },
   categoryText: {
     fontSize: 10,
@@ -233,65 +190,66 @@ const styles = StyleSheet.create({
     color: '#ea580c',
     textTransform: 'uppercase',
   },
+  priceText: {
+    fontWeight: 'bold',
+    color: '#ea580c',
+    fontSize: 14,
+  },
   itemName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#1f2937',
-    marginBottom: 4,
   },
   description: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginBottom: 16,
+    fontSize: 11,
+    color: '#9ca3af',
   },
   footer: {
-    borderTopWidth: 1,
-    borderColor: '#f3f4f6',
-    paddingTop: 16,
-  },
-  toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 6,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   availText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#374151',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  toggleTrack: {
+    width: 36,
+    height: 20,
+    borderRadius: 12,
+    padding: 2,
+  },
+  toggleThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    elevation: 1,
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
-  editBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 10,
-    backgroundColor: '#f9fafb',
+  iconBtn: {
+    width: 30,
+    height: 30,
     borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    gap: 6,
   },
-  deleteBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 10,
+  iconBtnDanger: {
     backgroundColor: '#fef2f2',
-    borderRadius: 8,
-    borderWidth: 1,
     borderColor: '#fecaca',
-    gap: 6,
-  },
-  actionText: {
-    fontWeight: 'bold',
-    color: '#4b5563',
-    fontSize: 14,
   },
 });
 

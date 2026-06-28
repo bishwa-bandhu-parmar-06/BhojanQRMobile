@@ -3,18 +3,23 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import Toast from 'react-native-toast-message';
 import { Save, Smartphone } from 'lucide-react-native';
 import { getAppVersion, updateAppVersion } from '../../API/versionApi';
+import BhojanQRLoader from '../../components/BhojanQRLoader';
+import SectionError from '../../components/SectionError';
+
+const initialFormData = {
+  minVersion: '',
+  latestVersion: '',
+  updateUrl: '',
+  message: '',
+  forceUpdate: true
+};
 
 const AppVersionManager = () => {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [formData, setFormData] = useState({
-    minVersion: '',
-    latestVersion: '',
-    updateUrl: '',
-    message: '',
-    forceUpdate: true
-  });
+  const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
     fetchVersionConfig();
@@ -22,12 +27,14 @@ const AppVersionManager = () => {
 
   const fetchVersionConfig = async () => {
     try {
+      setLoadError(false);
       const res = await getAppVersion();
       if (res.data?.data) {
         setFormData(res.data.data);
       }
     } catch (error) {
       Toast.show({ type: 'error', text1: 'Failed to load version config' });
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -46,7 +53,15 @@ const AppVersionManager = () => {
   };
 
   if (loading) {
-    return <ActivityIndicator size="large" color="#ea580c" style={{ marginTop: 50 }} />;
+    return <BhojanQRLoader fullScreen={false} />;
+  }
+
+  if (loadError && !formData.minVersion && !formData.latestVersion) {
+    return (
+      <View style={styles.container}>
+        <SectionError message="Failed to load version config." onRetry={fetchVersionConfig} />
+      </View>
+    );
   }
 
   return (

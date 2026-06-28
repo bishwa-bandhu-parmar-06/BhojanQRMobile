@@ -10,10 +10,12 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 import LinearGradient from "react-native-linear-gradient";
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 
 const Help = () => {
+  const navigation = useNavigation<any>();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState("all");
@@ -126,7 +128,7 @@ const Help = () => {
                 </View>
                 <Text style={styles.supportTitle}>Still Need Help?</Text>
                 <Text style={styles.supportDesc}>Our support team is here to help you 24/7.</Text>
-                <TouchableOpacity style={styles.supportBtn}>
+                <TouchableOpacity style={styles.supportBtn} onPress={() => navigation.navigate('ContactUs')}>
                   <FontAwesome5 name="comment-dots" size={16} color="#ffffff" style={{ marginRight: 8 }} />
                   <Text style={styles.supportBtnText}>Contact Support</Text>
                 </TouchableOpacity>

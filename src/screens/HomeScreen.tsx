@@ -20,6 +20,7 @@ import { clearCart } from "../Features/CartSlice";
 import ContactForm from "../components/ContactForm";
 
 import FloatingQRScanner from "../components/FloatingQRScanner";
+import BhojanSupportBot from "../components/BhojanSupportBot";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.65;
@@ -233,6 +234,11 @@ const Home = () => {
 
         {/*  NAYA FLOATING SCANNER COMPONENT YAHAN LAGA DIYA */}
         <FloatingQRScanner />
+
+        {/* Mirrors the website's Home.jsx mounting of BhojanSupportBot -
+            placed bottom-left since FloatingQRScanner already owns the
+            bottom-right corner on this screen. */}
+        <BhojanSupportBot />
 
         {showContactForm && (
           <ContactForm onClose={() => setShowContactForm(false)} />

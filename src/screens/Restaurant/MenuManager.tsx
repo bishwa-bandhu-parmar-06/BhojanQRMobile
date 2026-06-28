@@ -22,10 +22,12 @@ import {
 import MenuList from "../../components/Restaurant/MenuList";
 import MenuForm from "../../components/Restaurant/MenuForm";
 import BulkMenuForm from "../../components/Restaurant/BulkMenuForm";
+import SectionError from "../../components/SectionError";
 
 const MenuManager = () => {
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showBulkForm, setShowBulkForm] = useState(false);
@@ -33,11 +35,13 @@ const MenuManager = () => {
   const fetchMenuItems = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const response = await getMyMenu();
       const items = response?.data?.menuItems || response?.data?.data || [];
       setMenuItems(items);
     } catch (error: any) {
       Toast.show({ type: "error", text1: "Failed to load menu items" });
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -93,20 +97,20 @@ const MenuManager = () => {
       <View style={styles.header}>
         <View style={styles.headerTextContainer}>
           <Text style={styles.title}>Manage Menu</Text>
-          <Text style={styles.subtitle}>
-            View, add, edit, and organize your dishes.
-          </Text>
+          {menuItems.length > 0 && (
+            <Text style={styles.subtitle}>{menuItems.length} item{menuItems.length === 1 ? "" : "s"}</Text>
+          )}
         </View>
-        
+
         {!showBulkForm && (
           <View style={styles.actionButtons}>
             <TouchableOpacity onPress={() => setShowBulkForm(true)} style={styles.bulkButton}>
-              <Layers size={18} color="#ea580c" />
+              <Layers size={16} color="#ea580c" />
               <Text style={styles.bulkButtonText}>Bulk Add</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={handleAddClick} style={styles.addButton}>
-              <Plus size={18} color="#ffffff" />
+              <Plus size={16} color="#ffffff" />
               <Text style={styles.addButtonText}>Add Item</Text>
             </TouchableOpacity>
           </View>
@@ -128,8 +132,10 @@ const MenuManager = () => {
          }} 
        />
     </ScrollView>
+  ) : loadError && menuItems.length === 0 ? (
+    <SectionError message="Failed to load menu items." onRetry={fetchMenuItems} />
   ) : (
-    
+
     <MenuList
       items={menuItems}
       loading={loading}
@@ -160,15 +166,22 @@ const MenuManager = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
-  header: { padding: 16, gap: 16 },
-  headerTextContainer: { marginBottom: 4 },
-  title: { fontSize: 24, fontWeight: "bold", color: "#1f2937" },
-  subtitle: { fontSize: 14, color: "#6b7280", marginTop: 2 },
-  actionButtons: { flexDirection: "row", gap: 12 },
-  bulkButton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#ffffff", borderWidth: 2, borderColor: "#ea580c", paddingVertical: 10, borderRadius: 12, elevation: 2 },
-  bulkButtonText: { color: "#ea580c", fontWeight: "600", fontSize: 14 },
-  addButton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#ea580c", paddingVertical: 10, borderRadius: 12, elevation: 2 },
-  addButtonText: { color: "#ffffff", fontWeight: "600", fontSize: 14 },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  headerTextContainer: { flex: 1, marginRight: 8 },
+  title: { fontSize: 20, fontWeight: "bold", color: "#1f2937" },
+  subtitle: { fontSize: 12, color: "#9ca3af", marginTop: 1 },
+  actionButtons: { flexDirection: "row", gap: 8 },
+  bulkButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#ffffff", borderWidth: 1.5, borderColor: "#ea580c", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10 },
+  bulkButtonText: { color: "#ea580c", fontWeight: "600", fontSize: 13 },
+  addButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#ea580c", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10 },
+  addButtonText: { color: "#ffffff", fontWeight: "600", fontSize: 13 },
   mainContent: { flex: 1 },
   bulkFormWrapper: { flex: 1, paddingHorizontal: 16 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.6)", justifyContent: "center", alignItems: "center", padding: 16 },

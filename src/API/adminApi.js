@@ -49,7 +49,27 @@ export const rejectRestaurant = (id) => {
   return api.post(`${BASE_URL}/restaurants/${id}/reject`);
 };
 
+// Full analytics for one restaurant (menu count, orders, revenue, join date)
+export const getRestaurantDetailsAdmin = (id) => {
+  return api.get(`${BASE_URL}/restaurants/${id}/details`);
+};
+
+// Moves a restaurant between pending/approved/rejected - unlike
+// approveRestaurant/rejectRestaurant (which only ever move a pending
+// restaurant forward), this can also move it back, e.g. un-approve.
+export const updateRestaurantStatusAdmin = (id, status) => {
+  return api.post(`${BASE_URL}/restaurants/${id}/status`, { status });
+};
+
 // Fetch the public admin contact email for support pages
 export const getPublicAdminContact = () => {
   return api.get(`${BASE_URL}/public/contact`);
+};
+
+export const forgotPasswordAdmin = (email) => {
+  return api.post(`${BASE_URL}/forgot-password`, { email });
+};
+
+export const resetPasswordAdmin = (token, password) => {
+  return api.put(`${BASE_URL}/reset-password/${token}`, { password });
 };

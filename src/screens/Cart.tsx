@@ -51,6 +51,13 @@ const Cart = () => {
   const totalAmount = useSelector((state: any) => state.cart?.totalAmount || 0);
   const authUser = useSelector((state: any) => state.auth?.user);
 
+  // A table number only ever reaches this screen via the QR-scan chain
+  // (FloatingQRScanner -> GuestMenu -> Cart), and the scanner already
+  // verified it against the table's HMAC signature server-side - so once
+  // it's present here it must stay locked, exactly like the website's
+  // readOnly table field, otherwise a customer could spoof a different
+  // table after a validated scan.
+  const tableLocked = !!urlTableNumber;
   const [tableNumber, setTableNumber] = useState(urlTableNumber || '');
   const [customerName, setCustomerName] = useState(
     authUser?.role === 'customer' ? authUser?.name || '' : '',
@@ -69,7 +76,7 @@ const Cart = () => {
   useEffect(() => {
     if (authUser?.role !== 'customer') return;
     const nextName = authUser?.name || '';
-    setCustomerName(prev =>
+    setCustomerName((prev: string) =>
       prev === lastAutoFilledName.current ? nextName : prev,
     );
     lastAutoFilledName.current = nextName;
@@ -400,12 +407,16 @@ const Cart = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}><Hash size={14} color="#9ca3af" /> Table Number</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, tableLocked && styles.inputLocked]}
               value={tableNumber}
-              onChangeText={setTableNumber}
+              onChangeText={tableLocked ? undefined : setTableNumber}
+              editable={!tableLocked}
               placeholder="e.g. 5, A3"
               keyboardType="default"
             />
+            {tableLocked && (
+              <Text style={styles.lockedHint}>Locked from your table's QR code</Text>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -478,6 +489,8 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 16 },
   label: { flexDirection: 'row', fontSize: 12, fontWeight: 'bold', color: '#4b5563', marginBottom: 6 },
   input: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, paddingHorizontal: 16, height: 50, fontSize: 16, backgroundColor: '#f9fafb' },
+  inputLocked: { backgroundColor: '#f3f4f6', color: '#9ca3af' },
+  lockedHint: { fontSize: 11, color: '#9ca3af', marginTop: 4, fontWeight: '600' },
   
   payBtn: { backgroundColor: '#ea580c', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 16, marginTop: 8, gap: 8 },
   payBtnDisabled: { backgroundColor: '#d1d5db' },

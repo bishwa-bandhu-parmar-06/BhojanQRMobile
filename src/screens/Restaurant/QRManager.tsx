@@ -11,6 +11,8 @@ import { QrCode, Printer, Trash2, Download, Share2 } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 
 import { getSavedQRs, generateAndSaveQRs, deleteQR } from "../../API/restaurentApi";
+import { SkeletonBlock } from "../../components/Skeleton";
+import SectionError from "../../components/SectionError";
 
 interface QRManagerProps {
   restaurant: any; 
@@ -20,7 +22,9 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
   const [tableCount, setTableCount] = useState("10");
   const [savedQRs, setSavedQRs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const qrRefs = useRef<{[key: string]: any}>({});
 
@@ -30,22 +34,27 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
 
   const fetchQRs = async () => {
     try {
+      setLoadError(false);
       const res = await getSavedQRs();
       setSavedQRs(res.data.data);
     } catch (error) {
       Toast.show({ type: "error", text1: "Failed to load saved QR codes." });
+      setLoadError(true);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDeleteQR = async (id: string) => {
+    setDeletingId(id);
     try {
       await deleteQR(id);
       setSavedQRs((prev: any[]) => prev.filter((qr: any) => qr._id !== id));
       Toast.show({ type: "success", text1: "QR Code deleted successfully" });
     } catch (error) {
       Toast.show({ type: "error", text1: "Failed to delete QR code" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -128,7 +137,27 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
     }
   };
 
-  if (isLoading) return <View style={styles.loader}><ActivityIndicator size="large" color="#f97316" /></View>;
+  if (isLoading) {
+    return (
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.container}>
+        <View style={styles.header}>
+          <SkeletonBlock width="60%" height={28} borderRadius={6} />
+          <SkeletonBlock width="80%" height={14} borderRadius={6} style={{ marginTop: 8 }} />
+        </View>
+        <SkeletonBlock height={88} borderRadius={16} style={{ marginBottom: 24 }} />
+        <View style={styles.grid}>
+          {[1, 2, 3, 4].map((i) => (
+            <View key={i} style={[styles.qrCardWrapper, { padding: 16, alignItems: "center", gap: 10 }]}>
+              <SkeletonBlock width={80} height={80} borderRadius={12} />
+              <SkeletonBlock width="70%" height={12} borderRadius={6} />
+              <SkeletonBlock width={110} height={110} borderRadius={8} />
+              <SkeletonBlock width="40%" height={14} borderRadius={6} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled" style={styles.container}>
@@ -148,7 +177,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
           />
         </View>
         <TouchableOpacity onPress={handleGenerate} disabled={isGenerating} style={styles.generateBtn}>
-          {isGenerating ? <ActivityIndicator color="#fff" /> : <QrCode size={20} color="#fff" />}
+          {isGenerating ? <ActivityIndicator size="small" color="#fff" /> : <QrCode size={20} color="#fff" />}
           <Text style={styles.btnText}>{isGenerating ? "Generating..." : "Generate QRs"}</Text>
         </TouchableOpacity>
       </View>
@@ -159,8 +188,16 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
             <View key={qr._id} style={styles.qrCardWrapper}>
               
               {/* DELETE BUTTON */}
-              <TouchableOpacity onPress={() => handleDeleteQR(qr._id)} style={styles.deleteBtn}>
-                <Trash2 size={16} color="#ef4444" />
+              <TouchableOpacity
+                onPress={() => handleDeleteQR(qr._id)}
+                disabled={deletingId === qr._id}
+                style={styles.deleteBtn}
+              >
+                {deletingId === qr._id ? (
+                  <ActivityIndicator size="small" color="#ef4444" />
+                ) : (
+                  <Trash2 size={16} color="#ef4444" />
+                )}
               </TouchableOpacity>
               
               {/*  THE VISUAL QR CARD (With Logo Added) */}
@@ -203,6 +240,10 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
 
             </View>
           ))}
+        </View>
+      ) : loadError ? (
+        <View style={styles.emptyState}>
+          <SectionError message="Failed to load saved QR codes." onRetry={fetchQRs} />
         </View>
       ) : (
         <View style={styles.emptyState}>

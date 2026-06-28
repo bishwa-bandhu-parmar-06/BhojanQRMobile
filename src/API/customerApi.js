@@ -33,3 +33,15 @@ export const getExpenditureAnalytics = () => {
 export const logoutCustomer = () => {
   return api.post(`${BASE_URL}/logout`);
 };
+
+export const forgotPasswordCustomer = email => {
+  return api.post(`${BASE_URL}/forgot-password`, { email });
+};
+
+export const resetPasswordCustomer = (token, password) => {
+  return api.put(`${BASE_URL}/reset-password/${token}`, { password });
+};
+
+export const googleAuthCustomer = credential => {
+  return api.post(`${BASE_URL}/google`, { credential });
+};

@@ -134,9 +134,13 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity onPress={onCancel} style={styles.cancelBtn}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
-        <TouchableOpacity onPress={handleSubmit} style={styles.saveBtn}>
-          {isSubmitting ? <ActivityIndicator color="#fff" /> : <><Save size={18} color="#fff" /><Text style={styles.saveText}>Save</Text></>}
+        <TouchableOpacity onPress={onCancel} style={styles.cancelBtn} disabled={isSubmitting}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+        <TouchableOpacity onPress={handleSubmit} style={styles.saveBtn} disabled={isSubmitting}>
+          {isSubmitting ? (
+            <><ActivityIndicator size="small" color="#fff" /><Text style={styles.saveText}>Saving...</Text></>
+          ) : (
+            <><Save size={18} color="#fff" /><Text style={styles.saveText}>Save</Text></>
+          )}
         </TouchableOpacity>
       </View>
     </View>

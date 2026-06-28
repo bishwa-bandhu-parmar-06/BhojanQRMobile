@@ -73,6 +73,9 @@ const CustomSidebar = (props: any) => {
     items.push(
       { route: 'About', label: 'About Us', icon: 'info-circle' },
       { route: 'Help', label: 'Help & FAQs', icon: 'headset' },
+      { route: 'ContactUs', label: 'Contact Us', icon: 'envelope' },
+      { route: 'FreeQrGenerator', label: 'Free QR Generator', icon: 'qrcode' },
+      { route: 'Explore', label: 'Explore', icon: 'compass' },
       { route: 'PrivacyPolicy', label: 'Privacy Policy', icon: 'shield-alt' }
     );
 
@@ -127,6 +130,8 @@ const CustomSidebar = (props: any) => {
                 ? 'Admin Portal'
                 : user.role === 'customer'
                 ? 'Customer'
+                : user.role === 'staff'
+                ? 'Staff Member'
                 : 'Restaurant Partner'}
             </Text>
           </View>

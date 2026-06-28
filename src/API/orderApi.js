@@ -21,3 +21,15 @@ export const getRestaurantOrders = () => {
 export const updateOrderStatus = (id, data) => {
   return api.put(`${BASE_URL}/${id}/status`, data);
 };
+
+export const getActiveSessionsList = () => {
+  return api.get(`${BASE_URL}/active-sessions`);
+};
+
+export const getTableMasterBill = (tableNumber) => {
+  return api.get(`${BASE_URL}/table-bill/${tableNumber}`);
+};
+
+export const closeTableSession = (data) => {
+  return api.post(`${BASE_URL}/close-session`, data);
+};

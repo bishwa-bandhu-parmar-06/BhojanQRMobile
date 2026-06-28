@@ -21,3 +21,12 @@ export const SOCKET_URL = __DEV__
   : 'https://bhojanqr.com';
 
 export const RAZORPAY_KEY = 'rzp_test_JM1WaEQuOzhIpS';
+
+// Same Google Cloud OAuth "Web application" client used by the website
+// (server's GOOGLE_CLIENT_ID env var) - the backend verifies every Google
+// ID token's `aud` claim against this exact value (customerController.js's
+// googleAuth), so the mobile app must request ID tokens for this same
+// client rather than a separate one. Web Client IDs are not secret - Google
+// documents embedding them directly in client app code.
+export const GOOGLE_WEB_CLIENT_ID =
+  '44325942288-atfvtvq19qq38p32s72etgtteopvlb34.apps.googleusercontent.com';

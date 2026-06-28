@@ -3,55 +3,54 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   FlatList,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
-import { Store, Tag, Plus, ShoppingBag, Filter } from 'lucide-react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { addToCart } from '../../Features/CartSlice';
+import { Store, Tag, Filter } from 'lucide-react-native';
 import { getPublicMenu } from '../../API/menuApi';
+import BhojanQRLoader from '../BhojanQRLoader';
+import MenuImage from '../MenuImage';
+import SectionError from '../SectionError';
 
+// View-only menu - no cart/ordering here. The scanner-connected ordering
+// flow is GuestMenu.tsx; this is reached separately (e.g. "View Menu" from
+// a past order in Bill Vault) just to browse a restaurant's dishes.
 const PublicMenu = () => {
-  // FIX 1: Type useRoute and useNavigation as any to avoid strict routing errors
   const route = useRoute<any>();
-  const navigation = useNavigation<any>();
-  const dispatch = useDispatch();
-
-  const { restaurantId, table } = route.params || {};
-  const tableNumber = table || 'N/A';
-
-  // FIX 2: Explicitly type 'state' as any
-  const cartItems = useSelector((state: any) => state.cart?.items || []);
-  const cartCount = cartItems.length;
+  const { restaurantId } = route.params || {};
 
   // FIX 3: Explicitly type allMenuItems as an array of any, not never[]
   const [allMenuItems, setAllMenuItems] = useState<any[]>([]);
   const [restaurantName, setRestaurantName] = useState('Loading...');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const [visibleCount, setVisibleCount] = useState(8);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showFilters, setShowFilters] = useState(false);
 
+  const fetchMenu = async () => {
+    try {
+      setLoading(true);
+      setLoadError(false);
+      const res = await getPublicMenu(restaurantId);
+      const items = res.data.data;
+      setAllMenuItems(items);
+      if (items.length > 0 && items[0].restaurant)
+        setRestaurantName(items[0].restaurant.restaurantName);
+    } catch (error) {
+      Toast.show({ type: 'error', text1: 'Failed to load menu.' });
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchMenu = async () => {
-      try {
-        const res = await getPublicMenu(restaurantId);
-        const items = res.data.data;
-        setAllMenuItems(items);
-        if (items.length > 0 && items[0].restaurant)
-          setRestaurantName(items[0].restaurant.restaurantName);
-      } catch (error) {
-        Toast.show({ type: 'error', text1: 'Failed to load menu.' });
-      } finally {
-        setLoading(false);
-      }
-    };
     if (restaurantId) fetchMenu();
   }, [restaurantId]);
 
@@ -76,7 +75,7 @@ const PublicMenu = () => {
   const renderItem = ({ item }: { item: any }) => (
     <View style={styles.card}>
       <View style={styles.imgContainer}>
-        <Image source={{ uri: item.imageUrl }} style={styles.image} />
+        <MenuImage uri={item.imageUrl} style={styles.image} />
         <View style={styles.priceBadge}>
           <Text style={styles.priceText}>₹{item.price}</Text>
         </View>
@@ -92,26 +91,19 @@ const PublicMenu = () => {
         <Text style={styles.desc} numberOfLines={2}>
           {item.description || 'Freshly prepared for you.'}
         </Text>
-        <TouchableOpacity
-          onPress={() => {
-            dispatch(addToCart(item));
-            Toast.show({ type: 'success', text1: `${item.name} added!` });
-          }}
-          style={styles.addBtn}
-        >
-          <Plus size={16} color="#ea580c" />
-          <Text style={styles.addBtnText}>Add to Cart</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
 
-  if (loading)
+  if (loading) return <BhojanQRLoader />;
+
+  if (loadError && allMenuItems.length === 0) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#ea580c" />
+      <View style={styles.container}>
+        <SectionError message="Failed to load the menu." onRetry={fetchMenu} />
       </View>
     );
+  }
 
   return (
     <View style={styles.container}>
@@ -179,35 +171,6 @@ keyboardShouldPersistTaps="handled"
           ) : null
         }
       />
-
-      {/* Floating Cart Button */}
-      {cartCount > 0 && (
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('Cart', { restaurantId, table: tableNumber })
-          }
-          style={styles.fab}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View>
-              <ShoppingBag size={20} color="#fff" />
-              <View style={styles.badge}>
-                <Text style={styles.badgeTxt}>{cartCount}</Text>
-              </View>
-            </View>
-            <Text style={styles.fabText}>View Order</Text>
-          </View>
-          <View style={styles.divider} />
-          <Text style={styles.fabPrice}>
-            ₹
-            {cartItems.reduce(
-              // FIX 8: Explicitly type acc and item in the reduce function
-              (acc: number, item: any) => acc + item.price * item.quantity,
-              0,
-            )}
-          </Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 };
@@ -290,54 +253,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   desc: { fontSize: 12, color: '#6b7280', marginBottom: 16 },
-  addBtn: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 8,
-  },
-  addBtnText: { color: '#ea580c', fontWeight: 'bold' },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    backgroundColor: '#ea580c',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    height: 56,
-    borderRadius: 28,
-    elevation: 5,
-    shadowColor: '#ea580c',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { height: 5, width: 0 },
-  },
-  badge: {
-    position: 'absolute',
-    top: -6,
-    right: -8,
-    backgroundColor: '#fff',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  badgeTxt: { fontSize: 10, fontWeight: '900', color: '#ea580c' },
-  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 12, fontSize: 16 },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    marginHorizontal: 16,
-  },
-  fabPrice: { color: '#fff', fontWeight: '900', fontSize: 16 },
 });
 
 export default PublicMenu;

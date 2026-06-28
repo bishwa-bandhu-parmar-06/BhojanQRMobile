@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { 
-  View, 
-  Text, 
-  Image, 
-  FlatList, 
+  View,
+  Text,
+  FlatList,
   ActivityIndicator, 
   StyleSheet, 
   Dimensions,
@@ -18,7 +17,9 @@ import Toast from "react-native-toast-message";
 import { Store, Tag,RefreshCw,WifiOff } from "lucide-react-native";
 
 // Assume this is your API function
-import { getAllMenuItems } from "../API/menuApi"; 
+import { getAllMenuItems } from "../API/menuApi";
+import BhojanQRLoader from "../components/BhojanQRLoader";
+import MenuImage from "../components/MenuImage"; 
 
 const { width } = Dimensions.get("window");
 // Calculate card width for a 2-column grid with padding
@@ -52,8 +53,8 @@ const MenuCard: React.FC<MenuCardProps> = ({ item }) => {
     <View style={styles.card}>
       {/* 1. Image Container */}
       <View style={styles.imageContainer}>
-        <Image
-          source={{ uri: item.imageUrl || "" }}
+        <MenuImage
+          uri={item.imageUrl}
           style={[
             styles.image,
             // Apply opacity if out of stock
@@ -236,12 +237,7 @@ const Menu: React.FC = () => {
 
   // Initial Full-Screen Loader
   if (loading && menuItems.length === 0) {
-    return (
-      <View style={styles.centerScreen}>
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text style={styles.loadingText}>Discovering delicious food...</Text>
-      </View>
-    );
+    return <BhojanQRLoader message="Discovering delicious food..." />;
   }
 
   return (

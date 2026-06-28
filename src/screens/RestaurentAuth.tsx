@@ -104,7 +104,11 @@ const RestaurentAuth = () => {
             dispatch(loginSuccess({ user: userData }));
           }
           Toast.show({ type: "success", text1: "Welcome back!" });
-          setTimeout(() => navigation.navigate("RestaurantDashboard"), 1500);
+          // Pending owners can log in (only rejected/suspended are blocked
+          // server-side) but shouldn't see the dashboard yet - mirrors the
+          // website's ProtectedRoute redirect to /restaurant/pending-approval.
+          const destination = userData?.status === "pending" ? "PendingApproval" : "RestaurantDashboard";
+          setTimeout(() => navigation.navigate(destination), 1500);
         }
       } else {
         const formData = new FormData();
@@ -314,6 +318,15 @@ const RestaurentAuth = () => {
                   </TouchableOpacity>
                 </View>
 
+                {isLogin && (
+                  <TouchableOpacity
+                    style={styles.forgotLink}
+                    onPress={() => navigation.navigate("ForgotPassword", { role: "restaurant" })}
+                  >
+                    <Text style={styles.forgotLinkText}>Forgot password?</Text>
+                  </TouchableOpacity>
+                )}
+
                 {/* SUBMIT BUTTON */}
                 <TouchableOpacity
                   style={[
@@ -347,6 +360,16 @@ const RestaurentAuth = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {isLogin && (
+                <TouchableOpacity
+                  style={styles.staffLoginLink}
+                  onPress={() => navigation.navigate("StaffAuth")}
+                >
+                  <FontAwesome5 name="user-tie" size={12} color="#16a34a" style={{ marginRight: 6 }} />
+                  <Text style={styles.staffLoginLinkText}>Staff member? Sign in here</Text>
+                </TouchableOpacity>
+              )}
 
             </View>
           </View>
@@ -467,6 +490,29 @@ const styles = StyleSheet.create({
   },
   eyeIcon: {
     padding: 8,
+  },
+  forgotLink: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+  },
+  forgotLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  staffLoginLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  staffLoginLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#16a34a',
   },
   divider: {
     height: 1,

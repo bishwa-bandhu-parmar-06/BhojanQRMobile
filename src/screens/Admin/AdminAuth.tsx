@@ -238,6 +238,15 @@ const AdminAuth = () => {
                   </TouchableOpacity>
                 </View>
 
+                {isLogin && (
+                  <TouchableOpacity
+                    style={styles.forgotLink}
+                    onPress={() => navigation.navigate('ForgotPassword', { role: 'admin' })}
+                  >
+                    <Text style={styles.forgotLinkText}>Forgot password?</Text>
+                  </TouchableOpacity>
+                )}
+
                 {/* SUBMIT BUTTON */}
                 <TouchableOpacity
                   style={[
@@ -421,6 +430,15 @@ const styles = StyleSheet.create({
   },
   eyeIcon: {
     padding: 8,
+  },
+  forgotLink: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+  },
+  forgotLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#15803d',
   },
 
   // Buttons

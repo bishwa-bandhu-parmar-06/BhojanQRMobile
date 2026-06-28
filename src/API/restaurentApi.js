@@ -16,6 +16,21 @@ export const getRestaurantProfile = () => {
   return api.get(`${BASE_URL}/profile`);
 };
 
+// Mirrors the website's PendingApproval page polling - lighter than
+// re-fetching the full profile, just the one field admin approval flips.
+export const checkRestaurantStatus = () => {
+  return api.get(`${BASE_URL}/check-status`);
+};
+
+// Verifies the HMAC `sig` a table's QR code was generated with, so a
+// customer can't load a menu under a different table number than the one
+// they actually scanned just by editing the URL/deep-link params.
+export const validateTableNumber = (restaurantId, tableNumber, sig) => {
+  return api.get(
+    `${BASE_URL}/public/${restaurantId}/validate-table?table=${tableNumber}&sig=${sig || ''}`,
+  );
+};
+
 export const updateRestaurantProfile = data => {
   return api.post(`${BASE_URL}/edit-profile`, data);
 };
@@ -62,4 +77,46 @@ export const validateTable = (id, table, sig) => {
   return api.get(`${BASE_URL}/public/${id}/validate-table`, {
     params: { table, sig },
   });
+};
+
+export const forgotPasswordRestaurant = email => {
+  return api.post(`${BASE_URL}/forgot-password`, { email });
+};
+
+export const verifyResetTokenRestaurant = token => {
+  return api.get(`${BASE_URL}/reset-password/${token}/verify`);
+};
+
+export const resetPasswordRestaurant = (token, password) => {
+  return api.put(`${BASE_URL}/reset-password/${token}`, { password });
+};
+
+export const updateRestaurantEmail = (newEmail, currentPassword) => {
+  return api.put(`${BASE_URL}/update-email`, { newEmail, currentPassword });
+};
+
+export const changeRestaurantPassword = (currentPassword, newPassword) => {
+  return api.put(`${BASE_URL}/change-password`, { currentPassword, newPassword });
+};
+
+export const uploadRestaurantLogo = formData => {
+  return api.post(`${BASE_URL}/upload-logo`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const addRestaurantDocument = formData => {
+  return api.post(`${BASE_URL}/documents`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const updateRestaurantDocument = (docId, formData) => {
+  return api.put(`${BASE_URL}/documents/${docId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const deleteRestaurantDocument = docId => {
+  return api.delete(`${BASE_URL}/documents/${docId}`);
 };

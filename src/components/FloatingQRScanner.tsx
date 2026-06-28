@@ -20,9 +20,16 @@ import { validateTable } from '../API/restaurentApi';
 
 const { height, width } = Dimensions.get('window');
 
-const FloatingQRScanner = () => {
+interface FloatingQRScannerProps {
+  // When true, opens the camera immediately on mount instead of waiting for
+  // a tap on the floating button - used by the dedicated Scan tab, where the
+  // user already expressed scan intent by navigating there.
+  autoOpen?: boolean;
+}
+
+const FloatingQRScanner: React.FC<FloatingQRScannerProps> = ({ autoOpen = false }) => {
   const navigation = useNavigation<any>();
-  
+
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [showInvalidQrModal, setShowInvalidQrModal] = useState(false);
   const [invalidQrMessage, setInvalidQrMessage] = useState(
@@ -76,6 +83,13 @@ const FloatingQRScanner = () => {
       setIsScannerOpen(true);
     }
   };
+
+  useEffect(() => {
+    if (autoOpen) {
+      openScanner();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
 
   //  FIX 1: Delay Hata Diya! Ab error instantly aayega.
   const handleInvalidQR = (message?: string) => {

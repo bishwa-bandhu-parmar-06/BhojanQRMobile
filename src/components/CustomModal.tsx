@@ -17,6 +17,7 @@ interface CustomModalProps {
   cancelText?: string;
   onConfirm: () => void;
   onCancel?: () => void; // Agar onCancel nahi denge, toh Cancel button hide ho jayega (Session Expired ke liye mast hai)
+  children?: React.ReactNode; // Optional extra content (e.g. a text input) between the message and buttons
 }
 
 const CustomModal: React.FC<CustomModalProps> = ({
@@ -28,6 +29,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
   cancelText = 'Cancel',
   onConfirm,
   onCancel,
+  children,
 }) => {
   // Theme decide karna based on type
   const getTheme = () => {
@@ -57,7 +59,9 @@ const CustomModal: React.FC<CustomModalProps> = ({
           
           <Text style={styles.modalTitle}>{title}</Text>
           <Text style={styles.modalMessage}>{message}</Text>
-          
+
+          {children}
+
           <View style={styles.modalButtonContainer}>
             {/* Cancel Button (Sirf tab dikhega jab onCancel prop pass kiya ho) */}
             {onCancel && (

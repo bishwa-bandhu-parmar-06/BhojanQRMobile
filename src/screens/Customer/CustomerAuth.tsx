@@ -14,9 +14,15 @@ import LinearGradient from 'react-native-linear-gradient';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import Toast from 'react-native-toast-message';
 import { useDispatch } from 'react-redux';
+import {
+  GoogleSignin,
+  isSuccessResponse,
+  isErrorWithCode,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 
 import { loginSuccess } from '../../Features/AuthSlice';
-import { registerCustomer, loginCustomer } from '../../API/customerApi';
+import { registerCustomer, loginCustomer, googleAuthCustomer } from '../../API/customerApi';
 import { setToken } from '../../utils/tokenStorage';
 
 const CustomerAuth = () => {
@@ -25,8 +31,61 @@ const CustomerAuth = () => {
 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', mobile: '', password: '' });
+
+  // Same success handling for password and Google sign-in/up - both land the
+  // customer on their dashboard with a stored token and Redux session.
+  const completeAuth = (responseData: any, successMessage: string) => {
+    if (responseData.token) {
+      setToken(responseData.token);
+    }
+    if (responseData.data) {
+      dispatch(loginSuccess({ user: responseData.data }));
+    }
+    Toast.show({ type: 'success', text1: successMessage });
+    navigation.navigate('CustomerDashboard');
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+
+      if (!isSuccessResponse(response)) {
+        // User backed out of the Google chooser - not an error.
+        return;
+      }
+
+      const idToken = response.data.idToken;
+      if (!idToken) {
+        Toast.show({ type: 'error', text1: 'Could not get a Google credential. Please try again.' });
+        return;
+      }
+
+      const apiResponse = await googleAuthCustomer(idToken);
+      if (apiResponse.data.success) {
+        completeAuth(apiResponse.data, 'Welcome!');
+      }
+    } catch (error: any) {
+      if (isErrorWithCode(error)) {
+        if (error.code === statusCodes.IN_PROGRESS) {
+          // Another sign-in flow is already running - ignore.
+        } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          Toast.show({ type: 'error', text1: 'Google Play Services is not available on this device' });
+        } else {
+          Toast.show({ type: 'error', text1: 'Google sign-in failed', text2: error.message });
+        }
+      } else {
+        const errorMsg = error.response?.data?.message || 'Google sign-in failed';
+        Toast.show({ type: 'error', text1: 'Error', text2: errorMsg });
+      }
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleChange = (name: string, value: string) => {
     setForm(prev => ({ ...prev, [name]: value }));
@@ -58,15 +117,7 @@ const CustomerAuth = () => {
         : await registerCustomer(form);
 
       if (response.data.success) {
-        if (response.data.token) {
-          await setToken(response.data.token);
-        }
-        const userData = response.data.data;
-        if (userData) {
-          dispatch(loginSuccess({ user: userData }));
-        }
-        Toast.show({ type: 'success', text1: isLogin ? 'Welcome back!' : 'Account created!' });
-        navigation.navigate('CustomerDashboard');
+        completeAuth(response.data, isLogin ? 'Welcome back!' : 'Account created!');
       }
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'Authentication failed';
@@ -159,6 +210,15 @@ const CustomerAuth = () => {
                   </TouchableOpacity>
                 </View>
 
+                {isLogin && (
+                  <TouchableOpacity
+                    style={styles.forgotLink}
+                    onPress={() => navigation.navigate('ForgotPassword', { role: 'customer' })}
+                  >
+                    <Text style={styles.forgotLinkText}>Forgot password?</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={[styles.submitButton, isLoading && styles.submitDisabled]}
                   onPress={handleSubmit}
@@ -169,6 +229,28 @@ const CustomerAuth = () => {
                     <ActivityIndicator color="#ffffff" size="small" />
                   ) : (
                     <Text style={styles.submitButtonText}>{isLogin ? 'Sign In' : 'Create Account'}</Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.googleButton, isGoogleLoading && styles.submitDisabled]}
+                  onPress={handleGoogleSignIn}
+                  disabled={isGoogleLoading}
+                  activeOpacity={0.8}
+                >
+                  {isGoogleLoading ? (
+                    <ActivityIndicator color="#ea580c" size="small" />
+                  ) : (
+                    <>
+                      <FontAwesome5 name="google" size={16} color="#ea580c" />
+                      <Text style={styles.googleButtonText}>Continue with Google</Text>
+                    </>
                   )}
                 </TouchableOpacity>
               </View>
@@ -208,9 +290,16 @@ const styles = StyleSheet.create({
   inputIcon: { width: 24 },
   textInput: { flex: 1, fontSize: 15, color: '#1f2937', fontWeight: '500', height: '100%' },
   eyeIcon: { padding: 8 },
+  forgotLink: { alignSelf: 'flex-end', marginTop: -4 },
+  forgotLinkText: { fontSize: 13, fontWeight: '700', color: '#ea580c' },
   submitButton: { height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 12, backgroundColor: '#ea580c' },
   submitDisabled: { backgroundColor: '#9ca3af' },
   submitButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 12 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#e5e7eb' },
+  dividerText: { fontSize: 12, fontWeight: '700', color: '#9ca3af' },
+  googleButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, height: 56, borderRadius: 16, marginTop: 16, backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#fed7aa' },
+  googleButtonText: { color: '#1f2937', fontSize: 15, fontWeight: '700' },
   toggleContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
   toggleText: { fontSize: 14, color: '#6b7280' },
   toggleTextBold: { fontSize: 14, fontWeight: 'bold', color: '#ea580c' },

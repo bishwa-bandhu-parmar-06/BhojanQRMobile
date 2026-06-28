@@ -1,7 +1,8 @@
 import React ,{ useEffect }from 'react';
 import { Provider } from 'react-redux';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './navigation/AppNavigator';
-import BootSplash from "react-native-bootsplash"; 
+import BootSplash from "react-native-bootsplash";
 import { PersistGate } from 'redux-persist/integration/react';
 
 // Import your Redux store
@@ -10,7 +11,11 @@ import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 import { TouchableOpacity, View } from 'react-native';
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import VersionCheckWrapper from './components/VersionCheckWrapper';
+import AppStatusGuard from './components/system/AppStatusGuard';
+import ErrorBoundary from './components/system/ErrorBoundary';
 import { loadToken } from './utils/tokenStorage';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { GOOGLE_WEB_CLIENT_ID } from './config/env';
 
 
 const toastConfig = {
@@ -54,6 +59,12 @@ const toastConfig = {
 const App = () => {
 useEffect(() => {
     loadToken();
+    // Must run once before any GoogleSignin.signIn() call. webClientId here
+    // must match the server's GOOGLE_CLIENT_ID exactly (customerController.js
+    // verifies every ID token's audience against it) - the Android-specific
+    // OAuth client (package name + signing cert SHA-1) is configured purely
+    // in Google Cloud Console and never referenced in app code.
+    GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
     const splashTimeout = setTimeout(async () => {
       try {
         await BootSplash.hide({ fade: true });
@@ -66,24 +77,30 @@ useEffect(() => {
     return () => clearTimeout(splashTimeout);
   }, []);
   return (
-    <Provider store={store}>
-      <PersistGate loading={null} persistor={persistor}>
-        {/*  AppNavigator mein onReady callback use karenge */}
-        <VersionCheckWrapper>
-        <AppNavigator 
-          onReady={async () => {
-            try {
-              await BootSplash.hide({ fade: true });
-              console.log("BootSplash: App is ready and persistent data loaded!");
-            } catch (e) {
-              console.log("BootSplash Error:", e);
-            }
-          }}
-        />
-        </VersionCheckWrapper>
-      </PersistGate>
-      <Toast config={toastConfig} />
-    </Provider>
+    <SafeAreaProvider>
+      <Provider store={store}>
+        <PersistGate loading={null} persistor={persistor}>
+          <AppStatusGuard>
+            <ErrorBoundary>
+              {/*  AppNavigator mein onReady callback use karenge */}
+              <VersionCheckWrapper>
+              <AppNavigator
+                onReady={async () => {
+                  try {
+                    await BootSplash.hide({ fade: true });
+                    console.log("BootSplash: App is ready and persistent data loaded!");
+                  } catch (e) {
+                    console.log("BootSplash Error:", e);
+                  }
+                }}
+              />
+              </VersionCheckWrapper>
+            </ErrorBoundary>
+          </AppStatusGuard>
+        </PersistGate>
+        <Toast config={toastConfig} />
+      </Provider>
+    </SafeAreaProvider>
   );
 };
 

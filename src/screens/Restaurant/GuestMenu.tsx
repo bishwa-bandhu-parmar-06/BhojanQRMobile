@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   TextInput,
   StyleSheet,
@@ -23,12 +22,20 @@ import {
   Filter,
   LayoutGrid,
   List,
+  AlertCircle,
+  AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react-native';
 
 import { getPublicMenu } from '../../API/menuApi';
+import { validateTableNumber } from '../../API/restaurentApi';
 import { addToCart } from '../../Features/CartSlice';
 import useNow from '../../hooks/useNow';
+import { useMenuOfferSocket } from '../../hooks/useMenuOfferSocket';
 import CallWaiterButton from '../../components/CallWaiterButton';
+import VirtualWaiter from '../../components/VirtualWaiter';
+import BhojanQRLoader from '../../components/BhojanQRLoader';
+import MenuImage from '../../components/MenuImage';
 import {
   evaluateBestOfferForItem,
   formatCountdown,
@@ -43,6 +50,8 @@ interface MenuItem {
   category: string;
   imageUrl: string;
   restaurant?: { restaurantName: string };
+  dietaryTags?: string[];
+  allergens?: string[];
 }
 
 const GuestMenu = () => {
@@ -50,16 +59,32 @@ const GuestMenu = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
-  const { restaurantId, table } = route.params || {};
+  const { restaurantId, table, sig } = route.params || {};
 
   const cartItems = useSelector((state: any) => state.cart?.items || []);
   const cartCount = cartItems.length;
+
+  // Dietary/allergen highlighting - mirrors the website's PublicMenu.jsx.
+  // Only a logged-in customer can have saved preferences at all (restaurant
+  // owners/staff/guests never will), same gate the website uses.
+  const authUser = useSelector((state: any) => state.auth?.user);
+  const prefs = authUser?.role === 'customer' ? authUser.preferences : null;
+  const hasDietaryPrefs = !!prefs?.dietary?.length;
+  const [showOnlyCompatible, setShowOnlyCompatible] = useState(false);
 
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
   const [restaurantName, setRestaurantName] = useState('Loading...');
   const [activeOffers, setActiveOffers] = useState<Offer[]>([]);
   const [restaurantTimezone, setRestaurantTimezone] = useState('Asia/Kolkata');
   const now = useNow(1000);
+
+  // Table QR Signature Gate - mirrors the website's PublicMenu.jsx
+  // isValidTable/checkingTable check, so editing the table number in a
+  // deep-linked bhojanqr://menu/:id?table=...&sig=... URL is rejected on
+  // mobile exactly like it already is on the website, instead of silently
+  // letting a tampered table number reach order creation.
+  const [isValidTable, setIsValidTable] = useState(true);
+  const [checkingTable, setCheckingTable] = useState(true);
 
   //  Pagination & Loading States
   const [loading, setLoading] = useState(true);
@@ -123,12 +148,49 @@ const GuestMenu = () => {
     }
   };
 
-  // Initial Fetch
+  // Initial Fetch - validates the table's HMAC signature first (if a table
+  // param was passed) before ever calling fetchMenu, same order as the
+  // website.
   useEffect(() => {
-    if (restaurantId) {
-      fetchMenu(1);
+    const fetchMenuAndValidateTable = async () => {
+      setCheckingTable(true);
+      try {
+        if (table) {
+          const tableRes = await validateTableNumber(restaurantId, table, sig);
+          if (!tableRes.data?.isValid) {
+            setIsValidTable(false);
+            setCheckingTable(false);
+            return;
+          }
+        }
+        setIsValidTable(true);
+        await fetchMenu(1);
+      } catch (error) {
+        setIsValidTable(false);
+      } finally {
+        setCheckingTable(false);
+      }
+    };
+    if (restaurantId) fetchMenuAndValidateTable();
+  }, [restaurantId, table, sig]);
+
+  // Live Happy Hour updates: unlike the website (which refetches the whole,
+  // unpaginated menu on this event), only the offers/timezone are
+  // re-pulled here so an in-progress infinite-scroll list of menu items
+  // isn't reset back to page 1 every time the owner touches an offer.
+  const refreshOffersSilently = useCallback(async () => {
+    try {
+      const res = await getPublicMenu(restaurantId, 1, 8);
+      setActiveOffers(res.data?.activeOffers || []);
+      if (res.data?.restaurantTimezone) {
+        setRestaurantTimezone(res.data.restaurantTimezone);
+      }
+    } catch {
+      // Silent - this is a background live-update, not a user-initiated fetch.
     }
   }, [restaurantId]);
+
+  useMenuOfferSocket(restaurantId, refreshOffersSilently);
 
   // Pull to Refresh
   const onRefresh = useCallback(() => {
@@ -145,18 +207,31 @@ const GuestMenu = () => {
     }
   };
 
+  const matchesDietaryFilter = (item: MenuItem) =>
+    !showOnlyCompatible ||
+    !hasDietaryPrefs ||
+    prefs.dietary.some((tag: string) => item.dietaryTags?.includes(tag));
+
   const filteredItems = useMemo(() => {
     return allMenuItems.filter((item) => {
       const matchCategory = selectedCategory === 'All' || item.category === selectedCategory;
       const matchPrice = item.price <= (parseInt(priceRange) || 99999);
-      return matchCategory && matchPrice;
+      return matchCategory && matchPrice && matchesDietaryFilter(item);
     });
-  }, [allMenuItems, selectedCategory, priceRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMenuItems, selectedCategory, priceRange, showOnlyCompatible, hasDietaryPrefs]);
 
   const categories = ['All', ...new Set(allMenuItems.map((item) => item.category))];
 
   // --- RENDERERS ---
   const renderItem = ({ item }: { item: MenuItem }) => {
+    const conflictingAllergens = prefs?.allergies?.length
+      ? item.allergens?.filter((a) => prefs.allergies.includes(a)) || []
+      : [];
+    const matchingDietaryTags = hasDietaryPrefs
+      ? item.dietaryTags?.filter((t) => prefs.dietary.includes(t)) || []
+      : [];
+
     const bestOffer = activeOffers.length
       ? evaluateBestOfferForItem({
           offers: activeOffers,
@@ -183,9 +258,13 @@ const GuestMenu = () => {
     };
 
     return (
-      <View style={[styles.card, viewMode === 'list' ? styles.cardList : styles.cardGrid]}>
+      <View style={[
+        styles.card,
+        viewMode === 'list' ? styles.cardList : styles.cardGrid,
+        matchingDietaryTags.length > 0 && styles.cardDietaryMatch,
+      ]}>
         <View style={[styles.imageContainer, viewMode === 'list' ? styles.imageContainerList : styles.imageContainerGrid]}>
-          <Image source={{ uri: item.imageUrl }} style={styles.image} />
+          <MenuImage uri={item.imageUrl} style={styles.image} />
           <View style={styles.priceBadge}>
             {bestOffer ? (
               <>
@@ -207,6 +286,23 @@ const GuestMenu = () => {
           <Text style={styles.itemDesc} numberOfLines={2}>
             {item.description || "Freshly prepared for you."}
           </Text>
+
+          {(conflictingAllergens.length > 0 || matchingDietaryTags.length > 0) && (
+            <View style={styles.tagBadgeRow}>
+              {conflictingAllergens.map((a) => (
+                <View key={a} style={styles.allergenBadge}>
+                  <AlertTriangle size={9} color="#dc2626" />
+                  <Text style={styles.allergenBadgeText}>Contains {a}</Text>
+                </View>
+              ))}
+              {matchingDietaryTags.map((t) => (
+                <View key={t} style={styles.dietaryBadge}>
+                  <ShieldCheck size={9} color="#15803d" />
+                  <Text style={styles.dietaryBadgeText}>{t}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           {bestOffer && (
             <View style={styles.offerBadge}>
@@ -244,12 +340,36 @@ const GuestMenu = () => {
     return null;
   };
 
-  if (loading && allMenuItems.length === 0) {
+  if (checkingTable) {
+    return <BhojanQRLoader message="Loading menu..." />;
+  }
+
+  if (!isValidTable) {
     return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#ea580c" />
-      </View>
+      <SafeAreaView style={styles.invalidTableContainer}>
+        <View style={styles.invalidTableCard}>
+          <View style={styles.invalidTableIconWrap}>
+            <AlertCircle size={40} color="#ef4444" strokeWidth={1.75} />
+          </View>
+          <Text style={styles.invalidTableTitle}>Invalid Table Code!</Text>
+          <Text style={styles.invalidTableMessage}>
+            Table <Text style={styles.invalidTableNumber}>#{table}</Text> does not exist or has
+            been deactivated by the restaurant owner. Please scan the official QR code stand.
+          </Text>
+          <View style={styles.invalidTableShieldBox}>
+            <Text style={styles.invalidTableShieldLabel}>BhojanQR Shield</Text>
+            <Text style={styles.invalidTableShieldText}>
+              Manual URL tampering or outdated table setups are locked out dynamically to prevent
+              mixed orders.
+            </Text>
+          </View>
+        </View>
+      </SafeAreaView>
     );
+  }
+
+  if (loading && allMenuItems.length === 0) {
+    return <BhojanQRLoader message="Loading menu..." />;
   }
 
   return (
@@ -264,6 +384,7 @@ const GuestMenu = () => {
         </View>
         <View style={styles.headerRight}>
           {table ? <CallWaiterButton restaurantId={restaurantId} tableNumber={table} /> : null}
+          <VirtualWaiter restaurantId={restaurantId} menuItems={allMenuItems} />
           <TouchableOpacity onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} style={styles.iconBtn}>
             {viewMode === 'grid' ? <List size={20} color="#4b5563" /> : <LayoutGrid size={20} color="#4b5563" />}
           </TouchableOpacity>
@@ -305,6 +426,17 @@ const GuestMenu = () => {
               onChangeText={setPriceRange}
             />
           </View>
+          {hasDietaryPrefs && (
+            <TouchableOpacity
+              style={[styles.compatibleToggle, showOnlyCompatible && styles.compatibleToggleActive]}
+              onPress={() => setShowOnlyCompatible((prev) => !prev)}
+            >
+              <ShieldCheck size={14} color={showOnlyCompatible ? '#fff' : '#16a34a'} />
+              <Text style={[styles.compatibleToggleText, showOnlyCompatible && styles.compatibleToggleTextActive]}>
+                Show only compatible
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -362,7 +494,18 @@ export default GuestMenu;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
+
+  // Invalid Table Gate
+  invalidTableContainer: { flex: 1, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  invalidTableCard: { backgroundColor: '#fff', borderRadius: 24, padding: 28, width: '100%', maxWidth: 420, alignItems: 'center', borderWidth: 1, borderColor: '#fee2e2', elevation: 4 },
+  invalidTableIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fee2e2', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  invalidTableTitle: { fontSize: 22, fontWeight: '900', color: '#1f2937', marginBottom: 8, textAlign: 'center' },
+  invalidTableMessage: { fontSize: 13, color: '#6b7280', fontWeight: '500', textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  invalidTableNumber: { color: '#ef4444', fontWeight: '800' },
+  invalidTableShieldBox: { backgroundColor: '#f9fafb', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#f3f4f6', width: '100%' },
+  invalidTableShieldLabel: { fontSize: 10, fontWeight: '900', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  invalidTableShieldText: { fontSize: 11, fontWeight: '600', color: '#6b7280' },
+
   // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -382,11 +525,21 @@ const styles = StyleSheet.create({
   catTextActive: { color: '#fff' },
   priceFilterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   priceInput: { backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, width: 80, fontWeight: 'bold', color: '#ea580c' },
+  compatibleToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#bbf7d0', backgroundColor: '#f0fdf4' },
+  compatibleToggleActive: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  compatibleToggleText: { fontSize: 13, fontWeight: '700', color: '#16a34a' },
+  compatibleToggleTextActive: { color: '#fff' },
 
   // List & Cards
   listContent: { padding: 16, paddingBottom: 100 },
   gridRow: { justifyContent: 'space-between' },
   card: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: '#f3f4f6', elevation: 1 },
+  cardDietaryMatch: { borderWidth: 2, borderColor: '#86efac' },
+  tagBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 4 },
+  allergenBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  allergenBadgeText: { fontSize: 9, fontWeight: '700', color: '#dc2626' },
+  dietaryBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  dietaryBadgeText: { fontSize: 9, fontWeight: '700', color: '#15803d' },
   cardList: { flexDirection: 'row', height: 140 },
   cardGrid: { width: '48%', flexDirection: 'col' as any },
   imageContainer: { position: 'relative', backgroundColor: '#f3f4f6' },
