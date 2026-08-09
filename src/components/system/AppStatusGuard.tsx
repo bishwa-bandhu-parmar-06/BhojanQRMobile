@@ -47,12 +47,21 @@ const AppStatusGuard = ({ children }: AppStatusGuardProps) => {
     return <OfflineScreen onRetry={checkNow} lastOnlineAt={lastOnlineAt} />;
   }
 
-  if (serverStatus === 'checking') {
-    return <BhojanQRLoader message="Connecting to BhojanQR..." />;
-  }
+  // In development the API is a backend on the dev machine reached over the
+  // `adb reverse` USB tunnel, so it is unreachable for entirely mundane
+  // reasons - server not started yet, restarting, cable replugged. Taking the
+  // whole app over for that makes it impossible to work on any screen, so dev
+  // builds fall through to the app and let individual calls fail on their own.
+  // Release builds keep the gate: there an unreachable API really does mean
+  // nothing in the app will work.
+  if (!__DEV__) {
+    if (serverStatus === 'checking') {
+      return <BhojanQRLoader message="Connecting to BhojanQR..." />;
+    }
 
-  if (serverStatus === 'down') {
-    return <ServerDownScreen countdown={countdown} retryCount={retryCount} onRetryNow={retryNow} />;
+    if (serverStatus === 'down') {
+      return <ServerDownScreen countdown={countdown} retryCount={retryCount} onRetryNow={retryNow} />;
+    }
   }
 
   return (

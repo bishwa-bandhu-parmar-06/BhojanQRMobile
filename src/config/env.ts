@@ -12,13 +12,20 @@
 // __DEV__ is RN's built-in equivalent of Vite's import.meta.env.DEV: true
 // for debug builds, false for release builds - set automatically, no env
 // file needed.
-export const API_BASE_URL = __DEV__
-  ? 'http://localhost:3000/api'
-  : 'https://bhojanqr.com/api';
+// Flip this to true to point a DEBUG build at the live production API instead
+// of the backend on this machine - handy for testing on a phone without
+// starting the local server. Release builds ignore it completely and always
+// use production, so leaving it flipped can never ship to users.
+const USE_PRODUCTION_API_IN_DEV = false;
 
-export const SOCKET_URL = __DEV__
-  ? 'http://localhost:3000'
-  : 'https://bhojanqr.com';
+const DEV_HOST = 'http://localhost:3000';
+const PROD_HOST = 'https://bhojanqr.com';
+
+const HOST = !__DEV__ || USE_PRODUCTION_API_IN_DEV ? PROD_HOST : DEV_HOST;
+
+export const API_BASE_URL = `${HOST}/api`;
+
+export const SOCKET_URL = HOST;
 
 export const RAZORPAY_KEY = 'rzp_test_JM1WaEQuOzhIpS';
 
