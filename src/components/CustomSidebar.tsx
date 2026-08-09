@@ -1,5 +1,5 @@
 import React, { useState , useEffect} from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Image } from 'react-native';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import DeviceInfo from 'react-native-device-info';
@@ -108,8 +108,10 @@ const CustomSidebar = (props: any) => {
           <FontAwesome5 name="times" size={20} color="#6b7280" />
         </TouchableOpacity>
 
-        <View style={styles.brandIconBox}>
-          <FontAwesome5 name="utensils" size={24} color="#ea580c" />
+        <View>
+          <Image source={require('../../assets/bhojanqr-icon.png')} style={{ width: 64, height: 64 }} />
+          
+          {/* <FontAwesome5 name="utensils" size={24} color="#ea580c" /> */}
         </View>
         <Text style={styles.brandTitle}>
           Bhojan<Text style={styles.brandTitleGreen}>QR</Text>

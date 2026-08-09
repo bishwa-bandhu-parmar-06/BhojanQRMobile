@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,10 +25,12 @@ import {
 import { loginSuccess } from '../../Features/AuthSlice';
 import { registerCustomer, loginCustomer, googleAuthCustomer } from '../../API/customerApi';
 import { setToken } from '../../utils/tokenStorage';
+import useNetworkStatus from '../../hooks/useNetworkStatus';
 
 const CustomerAuth = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
+  const { checkNow } = useNetworkStatus();
 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,6 +54,16 @@ const CustomerAuth = () => {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     try {
+      const online = await checkNow();
+      if (!online) {
+        Toast.show({
+          type: 'error',
+          text1: 'No internet connection',
+          text2: 'Google sign-in needs WiFi or mobile data. Connect and try again.',
+        });
+        return;
+      }
+
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
 
@@ -68,6 +81,14 @@ const CustomerAuth = () => {
       const apiResponse = await googleAuthCustomer(idToken);
       if (apiResponse.data.success) {
         completeAuth(apiResponse.data, 'Welcome!');
+      } else {
+        // Google gave us a valid credential but the backend turned it down -
+        // without this the button would just stop spinning and say nothing.
+        Toast.show({
+          type: 'error',
+          text1: 'Sign-in failed',
+          text2: apiResponse.data.message || 'Please try again.',
+        });
       }
     } catch (error: any) {
       if (isErrorWithCode(error)) {
@@ -78,6 +99,12 @@ const CustomerAuth = () => {
         } else {
           Toast.show({ type: 'error', text1: 'Google sign-in failed', text2: error.message });
         }
+      } else if (error.request && !error.response) {
+        Toast.show({
+          type: 'error',
+          text1: 'Cannot reach the server',
+          text2: 'Check your connection and try again.',
+        });
       } else {
         const errorMsg = error.response?.data?.message || 'Google sign-in failed';
         Toast.show({ type: 'error', text1: 'Error', text2: errorMsg });
@@ -139,10 +166,11 @@ const CustomerAuth = () => {
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
           <View style={styles.container}>
             <View style={styles.headerSection}>
-              <View style={styles.iconContainer}>
-                <FontAwesome5 name="user-circle" size={32} color="#ea580c" />
+              <View>
+                {/* <FontAwesome5 name="user-circle" size={32} color="#ea580c" /> */}
+                <Image source={require('../../../assets/bhojanqr-icon.png')} style={{ width: 64, height: 64 }} />
               </View>
-              <Text style={styles.mainTitle}>BhojanQR</Text>
+              <Text style={styles.mainTitle}>Bhojan<Text style={{ color: '#166534' }}>QR</Text></Text>
               <Text style={styles.subTitle}>
                 Track your orders, bills, and spending across every BhojanQR restaurant.
               </Text>

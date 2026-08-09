@@ -70,7 +70,7 @@ const ContactUs = () => {
             <View style={styles.heroSection}>
               <View style={styles.titleContainer}>
                 <Text style={styles.titleGreen}>Contact</Text>
-                <Text style={styles.titleOrange}>BhojanQR</Text>
+                <Text style={styles.titleOrange}>Bhojan<Text style={{ color: '#166534' }}>QR</Text></Text>
                 <View style={styles.titleUnderline} />
               </View>
               <Text style={styles.heroSubtext}>We're here to help restaurant owners and customers.</Text>

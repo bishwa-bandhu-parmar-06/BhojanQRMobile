@@ -225,7 +225,7 @@ const Home = () => {
           {/* GLOBAL FOOTER */}
           <View style={styles.footerContainer}>
             <View style={styles.footerLine} />
-            <Text style={styles.footerLogoText}>Bhojan<Text style={{color: '#ea580c'}}>QR</Text></Text>
+            <Text style={styles.mainTitle}>Bhojan<Text style={{ color: '#166534' }}>QR</Text></Text>
             <Text style={styles.footerText}>Made with ❤️ for modern dining</Text>
             <Text style={styles.footerCopyright}>© {new Date().getFullYear()} BhojanQR. All Rights Reserved.</Text>
           </View>
@@ -295,8 +295,8 @@ const styles = StyleSheet.create({
   contactText: { flex: 1, fontSize: 16, color: '#1f2937', fontWeight: '600' },
   footerContainer: { paddingHorizontal: 24, paddingVertical: 40, alignItems: 'center' },
   footerLine: { width: 40, height: 4, backgroundColor: '#e5e7eb', borderRadius: 2, marginBottom: 24 },
-  footerLogoText: { fontSize: 24, fontWeight: '900', color: '#166534', letterSpacing: -0.5, marginBottom: 8 },
   footerText: { fontSize: 14, color: '#6b7280', fontWeight: '500', marginBottom: 4 },
+    mainTitle: { fontSize: 28, fontWeight: '900', color: '#ea580c', marginBottom: 8 },
   footerCopyright: { fontSize: 12, color: '#9ca3af', fontWeight: '400' },
 });
 

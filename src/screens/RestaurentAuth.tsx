@@ -183,7 +183,7 @@ const RestaurentAuth = () => {
               <View style={styles.iconContainer}>
                 <FontAwesome5 name="store" size={32} color="#ea580c" />
               </View>
-              <Text style={styles.mainTitle}>BhojanQR Partner</Text>
+              <Text style={styles.mainTitle}>Bhojan<Text style={{ color: '#166534' }}>QR</Text> Partner</Text>
               <Text style={styles.subTitle}>
                 Grow your restaurant's reach, manage digital menus, and streamline your order pipeline.
               </Text>
