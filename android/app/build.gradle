@@ -84,13 +84,19 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+        // The app ships English-only strings, but AndroidX/Play Services drag in
+        // ~80 translated resource sets. Dropping them costs nothing and saves a
+        // couple of MB in every APK.
+        resourceConfigurations += ["en"]
     }
     splits {
         abi {
             enable true
             reset()
             include "armeabi-v7a", "arm64-v8a"
-            universalApk false
+            // Per-ABI APKs stay small; the universal one carries both ABIs so a
+            // single file can be handed to anyone regardless of their device.
+            universalApk true
         }
     }
     signingConfigs {
@@ -100,15 +106,24 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Credentials live in ~/.gradle/gradle.properties, never in the repo.
+            // Without them the release build stops rather than silently falling
+            // back to the debug key, which anyone can forge.
+            if (project.hasProperty("BHOJANQR_RELEASE_STORE_FILE")) {
+                storeFile file(BHOJANQR_RELEASE_STORE_FILE)
+                storePassword BHOJANQR_RELEASE_STORE_PASSWORD
+                keyAlias BHOJANQR_RELEASE_KEY_ALIAS
+                keyPassword BHOJANQR_RELEASE_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
