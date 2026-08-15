@@ -1,3 +1,11 @@
 <resources>
-    <color name="bootsplash_background">#ffffff</color>
+    <!-- Painted by AppTheme's windowBackground during launch, and matched by
+         SplashScreen.tsx's BACKGROUND constant. Change both together. -->
+    <color name="launch_background">#fff7ed</color>
+
+    <!-- Brand orange, used for the text caret and selection handles. -->
+    <color name="brand_orange">#ea580c</color>
+    <!-- Same hue at ~25% alpha for the selection highlight behind text, so
+         selected characters stay readable instead of being washed out. -->
+    <color name="brand_orange_selection">#40ea580c</color>
 </resources>

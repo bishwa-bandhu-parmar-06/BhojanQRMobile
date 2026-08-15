@@ -47,38 +47,21 @@ const Cart = () => {
 
   const cart = useSelector((state: any) => state.cart?.items || []);
   const totalAmount = useSelector((state: any) => state.cart?.totalAmount || 0);
-  const authUser = useSelector((state: any) => state.auth?.user);
 
-  // A table number only ever reaches this screen via the QR-scan chain
-  // (FloatingQRScanner -> GuestMenu -> Cart), and the scanner already
-  // verified it against the table's HMAC signature server-side - so once
-  // it's present here it must stay locked, exactly like the website's
-  // readOnly table field, otherwise a customer could spoof a different
-  // table after a validated scan.
+  // A table number only ever reaches this screen via the deep-link chain
+  // (table QR -> GuestMenu -> Cart), and GuestMenu already verified it
+  // against the table's HMAC signature server-side - so once it's present
+  // here it must stay locked, exactly like the website's readOnly table
+  // field, otherwise a customer could spoof a different table after a
+  // validated scan.
   const tableLocked = !!urlTableNumber;
   const [tableNumber, setTableNumber] = useState(urlTableNumber || '');
-  const [customerName, setCustomerName] = useState(
-    authUser?.role === 'customer' ? authUser?.name || '' : '',
-  );
+  // Always typed by hand now. This used to pre-fill from the logged-in
+  // customer's profile (and re-sync across a login/logout while the screen
+  // stayed mounted), but every diner reaching this screen is a guest, so
+  // there is no saved name to pull from.
+  const [customerName, setCustomerName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-
-  // This screen can stay mounted in the nav stack across a login/logout
-  // (e.g. the user opens Cart, then signs in from elsewhere and comes
-  // back), so the useState initializer above only catches the name at the
-  // very first mount. Re-sync whenever the logged-in customer changes,
-  // unless the field no longer matches what was last auto-filled - i.e.
-  // the customer typed their own value, which should never be clobbered.
-  const lastAutoFilledName = useRef(
-    authUser?.role === 'customer' ? authUser?.name || '' : '',
-  );
-  useEffect(() => {
-    if (authUser?.role !== 'customer') return;
-    const nextName = authUser?.name || '';
-    setCustomerName((prev: string) =>
-      prev === lastAutoFilledName.current ? nextName : prev,
-    );
-    lastAutoFilledName.current = nextName;
-  }, [authUser]);
 
   // 1s tick drives the per-item "price locked for Xm Ys" countdown; the
   // separate 10s tick below drives the actual expiry check, so an expired

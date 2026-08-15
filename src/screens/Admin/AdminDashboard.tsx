@@ -69,7 +69,13 @@ const AdminDashboard = () => {
       await logoutAdmin();
       await clearToken();
       dispatch(logout());
-      navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'Home' } }] });
+      // Reset rather than navigate, so the dashboard cannot be reached again
+      // with the back gesture after signing out. Targets the sign-in screen -
+      // this used to point at 'Home', which is no longer a registered route.
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp', params: { screen: 'Login/Signup' } }],
+      });
     } catch (error) {
       console.log('Logout error', error);
     }

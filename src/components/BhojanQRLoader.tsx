@@ -1,62 +1,54 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated, StyleSheet, AccessibilityInfo } from 'react-native';
+import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
 
-// Mirrors the website's BhojanQRLoader.jsx - each letter of "BhojanQR"
-// ("Bhojan" orange, "QR" green) lifts and settles with a soft bounce, one
-// letter at a time left-to-right, looping forever. No spinner/progress bar.
-// The website's keyframe is driven by a single shared 3.2s CSS animation
-// with per-letter `animation-delay` (400ms apart, 8 letters); this recreates
-// that with one Animated.loop per letter, each with the same total cycle
-// length so their 400ms relative stagger never drifts across loops.
-const LETTERS = ['B', 'h', 'o', 'j', 'a', 'n', 'Q', 'R'];
-const CYCLE_MS = 3200;
-const STEP_MS = 400;
+// The app's single loading indicator, used from ~15 screens.
+//
+// It used to animate the letters of "BhojanQR" one at a time (a port of the
+// website's BhojanQRLoader.jsx). That is now a plain spinning ring: it reads
+// as "working" instantly, at any size, and does not depend on the wordmark
+// being legible in a small inline slot.
+//
+// The name and props are unchanged so every existing call site keeps working
+// untouched - `fullScreen` and `message` behave exactly as before.
+
+const RING_SIZE = 40;
+const RING_THICKNESS = 4;
+const TRACK = '#ffedd5'; // pale orange, the unfilled part of the ring
+const ACCENT = '#ea580c'; // brand orange, the travelling arc
 
 interface BhojanQRLoaderProps {
   fullScreen?: boolean;
   message?: string;
 }
 
-const Letter = ({ char, index, color }: { char: string; index: number; color: string }) => {
-  const translateY = useRef(new Animated.Value(0)).current;
+const BhojanQRLoader = ({ fullScreen = true, message }: BhojanQRLoaderProps) => {
+  const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const delayBefore = index * STEP_MS;
-    const motionDuration = 150 + 120 + 180;
-    const delayAfter = CYCLE_MS - delayBefore - motionDuration;
-
+    // Linear easing keeps the rotation at a constant rate - anything eased
+    // makes a continuous spinner visibly stutter once per revolution.
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(delayBefore),
-        Animated.timing(translateY, { toValue: -6, duration: 150, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 1, duration: 120, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 180, useNativeDriver: true }),
-        Animated.delay(Math.max(delayAfter, 0)),
-      ]),
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
     );
     loop.start();
     return () => loop.stop();
-  }, [index, translateY]);
+  }, [spin]);
 
-  return (
-    <Animated.Text style={[styles.letter, { color, transform: [{ translateY }] }]}>
-      {char}
-    </Animated.Text>
-  );
-};
-
-const BhojanQRLoader = ({ fullScreen = true, message }: BhojanQRLoaderProps) => {
-  useEffect(() => {
-    if (message) AccessibilityInfo.announceForAccessibility(message);
-  }, [message]);
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   return (
     <View style={[styles.container, fullScreen ? styles.fullScreen : styles.inline]}>
-      <View style={styles.wordmark}>
-        {LETTERS.map((char, i) => (
-          <Letter key={i} char={char} index={i} color={i < 6 ? '#f97316' : '#16a34a'} />
-        ))}
-      </View>
+      {/* A full ring in the pale track colour with a single side overridden to
+          the brand orange; rotating it turns that arc into the moving part. */}
+      <Animated.View style={[styles.ring, { transform: [{ rotate }] }]} />
       {message && <Text style={styles.message}>{message}</Text>}
     </View>
   );
@@ -66,8 +58,14 @@ const styles = StyleSheet.create({
   container: { alignItems: 'center', justifyContent: 'center', gap: 10 },
   fullScreen: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#fff', zIndex: 999 },
   inline: { width: '100%', paddingVertical: 24, paddingHorizontal: 16 },
-  wordmark: { flexDirection: 'row', alignItems: 'flex-end' },
-  letter: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5 },
+  ring: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    borderWidth: RING_THICKNESS,
+    borderColor: TRACK,
+    borderTopColor: ACCENT,
+  },
   message: { fontSize: 13, fontWeight: '500', color: '#6b7280', textAlign: 'center' },
 });
 

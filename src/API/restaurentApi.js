@@ -25,6 +25,13 @@ export const checkRestaurantStatus = () => {
 // Verifies the HMAC `sig` a table's QR code was generated with, so a
 // customer can't load a menu under a different table number than the one
 // they actually scanned just by editing the URL/deep-link params.
+//
+// This is now the ONLY table-signature check in the app. There used to be a
+// second one inside the in-app scanner (a duplicate `validateTable` hitting
+// this same endpoint) which rejected a tampered code before the menu ever
+// opened; with the scanner removed, every guest arrives via deep link and
+// GuestMenu's call to this is what stands between a forged table number and
+// an order.
 export const validateTableNumber = (restaurantId, tableNumber, sig) => {
   return api.get(
     `${BASE_URL}/public/${restaurantId}/validate-table?table=${tableNumber}&sig=${sig || ''}`,
@@ -70,13 +77,6 @@ export const deleteQR = id => {
 // Fetch public restaurant details (Name and Email only)
 export const getPublicRestaurantDetails = id => {
   return api.get(`${BASE_URL}/public/${id}`);
-};
-
-// Verifies a scanned table QR's HMAC signature before letting a guest order
-export const validateTable = (id, table, sig) => {
-  return api.get(`${BASE_URL}/public/${id}/validate-table`, {
-    params: { table, sig },
-  });
 };
 
 export const forgotPasswordRestaurant = email => {

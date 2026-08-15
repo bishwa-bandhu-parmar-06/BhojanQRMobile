@@ -1,8 +1,7 @@
-import React ,{ useEffect }from 'react';
+import React, { useEffect, useState } from 'react';
 import { Provider } from 'react-redux';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './navigation/AppNavigator';
-import BootSplash from "react-native-bootsplash";
 import { PersistGate } from 'redux-persist/integration/react';
 
 // Import your Redux store
@@ -14,9 +13,11 @@ import VersionCheckWrapper from './components/VersionCheckWrapper';
 import AppStatusGuard from './components/system/AppStatusGuard';
 import ErrorBoundary from './components/system/ErrorBoundary';
 import { loadToken } from './utils/tokenStorage';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { GOOGLE_WEB_CLIENT_ID } from './config/env';
+import BhojanQRLoader from './components/BhojanQRLoader';
+import SplashScreen from './components/SplashScreen';
 
+
+const SPLASH_DURATION_MS = 2000;
 
 const toastConfig = {
   success: (props: any) => (
@@ -57,47 +58,31 @@ const toastConfig = {
 
 
 const App = () => {
-useEffect(() => {
-    loadToken();
-    // Must run once before any GoogleSignin.signIn() call. webClientId here
-    // must match the server's GOOGLE_CLIENT_ID exactly (customerController.js
-    // verifies every ID token's audience against it) - the Android-specific
-    // OAuth client (package name + signing cert SHA-1) is configured purely
-    // in Google Cloud Console and never referenced in app code.
-    GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
-    const splashTimeout = setTimeout(async () => {
-      try {
-        await BootSplash.hide({ fade: true });
-        console.log("Failsazfe: BootSplash force hidden!");
-      } catch (e) {
-        console.log("BootSplash Error:", e);
-      }
-    }, 3000); 
+  const [splashDone, setSplashDone] = useState(false);
 
-    return () => clearTimeout(splashTimeout);
+  useEffect(() => {
+    loadToken();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSplashDone(true), SPLASH_DURATION_MS);
+    return () => clearTimeout(timer);
   }, []);
   return (
     <SafeAreaProvider>
       <Provider store={store}>
-        <PersistGate loading={null} persistor={persistor}>
+        <PersistGate loading={<BhojanQRLoader />} persistor={persistor}>
           <AppStatusGuard>
             <ErrorBoundary>
-              {/*  AppNavigator mein onReady callback use karenge */}
               <VersionCheckWrapper>
-              <AppNavigator
-                onReady={async () => {
-                  try {
-                    await BootSplash.hide({ fade: true });
-                    console.log("BootSplash: App is ready and persistent data loaded!");
-                  } catch (e) {
-                    console.log("BootSplash Error:", e);
-                  }
-                }}
-              />
+
+              <AppNavigator />
               </VersionCheckWrapper>
             </ErrorBoundary>
           </AppStatusGuard>
         </PersistGate>
+        {!splashDone && <SplashScreen />}
+
         <Toast config={toastConfig} />
       </Provider>
     </SafeAreaProvider>

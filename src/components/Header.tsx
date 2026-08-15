@@ -1,74 +1,91 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
-import { Menu } from 'lucide-react-native';
-import Toast from 'react-native-toast-message';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
+import { Bell } from 'lucide-react-native';
 
-// 1. Import Redux hooks to check login status
-import { useSelector } from 'react-redux';
+import { getRestaurantNotifications } from '../API/notificationApi';
+import { setHasUnread, markUnreadArrived } from '../Features/NotificationSlice';
+import { socket } from '../utils/socket';
 
+// The app's top bar: brand icon on the left, notification bell on the right.
+//
+// Things that used to live here and have moved out: a hamburger (the drawer is
+// gone), a five-tap admin shortcut (now on the auth screen's brand icon), and
+// a back button (every screen this appears on is a terminal destination now).
+//
+// The dashboards no longer draw their own "Welcome back, <restaurant>" bar
+// with a logout button - this is the only chrome above their content, and
+// logout moved into the More page and the Profile section.
 const Header = () => {
   const navigation = useNavigation<any>();
+  const dispatch = useDispatch();
 
-  // 2. Pull the auth state from Redux
-  const { isAuthenticated, user } = useSelector((state: any) => state.auth);
+  const user = useSelector((state: any) => state.auth?.user);
+  const hasUnread = useSelector((state: any) => state.notifications?.hasUnread);
 
-  const [tapCount, setTapCount] = useState(0);
-  const [lastTap, setLastTap] = useState(0);
+  // /notifications is a restaurant-scoped endpoint (owner or staff). Admins
+  // would just collect a 403, so the bell is theirs alone.
+  const isRestaurantSide = user?.role === 'restaurant' || user?.role === 'staff';
 
-  const handleLogoTap = () => {
-    const now = Date.now();
+  useEffect(() => {
+    if (!isRestaurantSide) return;
 
-    // If taps are less than 1 second apart
-    if (now - lastTap < 1000) {
-      const newTapCount = tapCount + 1;
-      setTapCount(newTapCount);
+    let cancelled = false;
 
-      // Trigger on exactly 5 consecutive taps
-      if (newTapCount === 5) {
-        setTapCount(0); // Reset the counter
-        
-        // 3. Check if the user is already logged in as an admin
-        if (isAuthenticated && user?.role === 'admin') {
-          Toast.show({
-            type: 'info',
-            text1: 'Admin Access Active',
-            text2: 'You are already logged in to the control center.',
-          });
-        } else {
-          // If not logged in as admin, navigate to the secret login screen
-          navigation.navigate('AdminAuth'); 
+    // Seed the badge from the real list, so it is accurate on a cold start
+    // rather than only reacting to events that happen while the app is open.
+    (async () => {
+      try {
+        const res = await getRestaurantNotifications();
+        const list = res.data?.data || [];
+        if (!cancelled) {
+          dispatch(setHasUnread(list.some((n: any) => !n.isRead)));
         }
+      } catch {
+        // The badge is an affordance, not information the user is relying on -
+        // a failed fetch should leave the header alone, not surface an error.
       }
-    } else {
-      // If they waited too long between taps, reset the count to 1
-      setTapCount(1);
-    }
+    })();
 
-    setLastTap(now);
-  };
+    // Keep it live. The server creates a Notification for the restaurant on
+    // every new order and emits into the restaurant's room at the same time,
+    // so this event arriving means there is something new to read.
+    const onOrderActivity = () => dispatch(markUnreadArrived());
+    socket.on('order:status-changed', onOrderActivity);
+
+    return () => {
+      cancelled = true;
+      socket.off('order:status-changed', onOrderActivity);
+    };
+  }, [isRestaurantSide, dispatch]);
 
   return (
     <View style={styles.headerContainer}>
-      
-      {/* LEFT: Logo Image */}
-      <TouchableOpacity onPress={handleLogoTap} activeOpacity={0.8}>
-        <View style={styles.logoContainer}>
-          <Image 
-            source={require("../assets/logo.png")}
-            style={styles.logoImage}
-          />
-        </View>
-      </TouchableOpacity>
+      <Image
+        source={require('../../assets/bhojanqr-icon.png')}
+        style={styles.logoImage}
+        resizeMode="contain"
+      />
 
-      {/* RIGHT: Menu Button */}
-      <TouchableOpacity 
-        onPress={() => navigation.dispatch(DrawerActions.toggleDrawer())}
-        style={styles.menuButton}
-      >
-        <Menu color="#333" size={26} />
-      </TouchableOpacity>
+      <View style={styles.spacer} />
 
+      {isRestaurantSide && (
+        <TouchableOpacity
+          onPress={() =>
+            // Params rather than shared state: RestaurantDashboard owns which
+            // panel is showing, and reads this to jump to Notifications.
+            navigation.navigate('RestaurantDashboard', { openTab: 'notifications' })
+          }
+          style={styles.bellButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={hasUnread ? 'Notifications, unread' : 'Notifications'}
+        >
+          <Bell size={22} color="#374151" />
+          {hasUnread && <View style={styles.badge} />}
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -80,20 +97,26 @@ const styles = StyleSheet.create({
     height: 55,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#fff',
     paddingHorizontal: 15,
   },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   logoImage: {
-    width: 100,
-    height: 100,
-    resizeMode: 'contain',
+    width: 38,
+    height: 38,
   },
-  menuButton: {
-    padding: 5,
+  spacer: { flex: 1 },
+  bellButton: {
+    padding: 4,
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
 });

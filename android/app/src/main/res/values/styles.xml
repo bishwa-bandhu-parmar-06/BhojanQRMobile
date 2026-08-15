@@ -2,11 +2,45 @@
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+
+        <!--
+          Text-cursor colour for every TextInput in the app. Android derives
+          the caret from the theme, and nothing here had ever set it, so it
+          fell through to AppCompat's stock accent - which against the pale
+          #f9fafb input backgrounds this app uses is close to invisible, so
+          tapping a field looked like it had not focused at all. Pointing it
+          at the brand orange makes the caret obvious in every field at once,
+          rather than needing a prop on each of the app's many inputs.
+
+          Both the AppCompat attr and the framework one are set on purpose.
+          React Native's TextInput is a ReactEditText, which extends
+          AppCompatEditText and reads the UNPREFIXED colorControlActivated;
+          the android:-prefixed attr only reaches plain framework widgets.
+          Setting just one of the two leaves half the app unfixed.
+
+          colorAccent is the umbrella AppCompat derives control tints from, so
+          it keeps checkboxes, switches and selection handles on-brand too.
+        -->
+        <item name="colorAccent">@color/brand_orange</item>
+        <item name="colorControlActivated">@color/brand_orange</item>
+        <item name="android:colorControlActivated">@color/brand_orange</item>
+        <item name="android:textColorHighlight">@color/brand_orange_selection</item>
+
+        <!--
+          This is the ONLY thing on screen between the icon being tapped and
+          SplashScreen.tsx drawing. Android always shows a window built from
+          the launch activity's theme before any JS exists; the default is a
+          flat white, which is the blank flash we are removing. Painting it
+          the same #fff7ed that SplashScreen uses means the launch begins in
+          the splash's own colour and SplashScreen simply draws its logo onto
+          it - one continuous screen, no white, no second splash image.
+
+          Keep in step with SplashScreen.tsx's BACKGROUND constant.
+        -->
+        <item name="android:windowBackground">@color/launch_background</item>
     </style>
 
-    <style name="BootTheme" parent="Theme.BootSplash">
-        <item name="bootSplashBackground">@color/bootsplash_background</item>
-        <item name="bootSplashLogo">@drawable/bootsplash_logo</item>
-        <item name="postBootSplashTheme">@style/AppTheme</item>
-    </style>
+    <!-- BootTheme (react-native-bootsplash) has been removed. The activity
+         now launches straight into AppTheme, so there is no native splash
+         screen at all - SplashScreen.tsx is the only splash in the app. -->
 </resources>

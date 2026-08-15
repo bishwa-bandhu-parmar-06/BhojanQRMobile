@@ -99,9 +99,16 @@ const AdminAuth = () => {
           text1: isLogin ? 'Welcome back!' : 'Account created successfully!',
         });
 
+        // reset, not navigate: AdminAuth is a root-stack screen, so navigating
+        // would leave it underneath and the back gesture would return a
+        // signed-in admin to the login form. Resetting the root stack to
+        // MainApp discards it; logging out is the only route back.
         setTimeout(() => {
-          navigation.navigate('MainApp', { screen: 'AdminDashboard' });
-        }, ); 
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'MainApp', params: { screen: 'AdminDashboard' } }],
+          });
+        }, 1500);
      }
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'Authentication failed';

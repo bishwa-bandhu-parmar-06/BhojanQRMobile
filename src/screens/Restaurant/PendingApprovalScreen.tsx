@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -34,13 +34,22 @@ const PendingApprovalScreen = () => {
   const { user } = useSelector((state: any) => state.auth);
   const [isChecking, setIsChecking] = useState(false);
 
+  // Every move off this screen is a reset rather than a navigate. This screen
+  // is a gate: once an owner is past it (approved) or has dropped out of it
+  // (signed out / rejected) it must not remain in the back stack for a
+  // gesture to return to.
+  const resetTo = useCallback(
+    (screen: string) => navigation.reset({ index: 0, routes: [{ name: screen }] }),
+    [navigation],
+  );
+
   useEffect(() => {
     if (!user) {
-      navigation.navigate("Login/Signup");
+      resetTo("Login/Signup");
     } else if (user.status === "approved") {
-      navigation.navigate("RestaurantDashboard");
+      resetTo("RestaurantDashboard");
     }
-  }, [user, navigation]);
+  }, [user, resetTo]);
 
   const handleCheckStatus = async () => {
     setIsChecking(true);
@@ -51,11 +60,11 @@ const PendingApprovalScreen = () => {
       if (currentStatus === "approved") {
         Toast.show({ type: "success", text1: "Congratulations! Your account is approved." });
         dispatch(updateUser({ status: "approved" }));
-        navigation.navigate("RestaurantDashboard");
+        resetTo("RestaurantDashboard");
       } else if (currentStatus === "rejected") {
         Toast.show({ type: "error", text1: "Your application has been rejected." });
         dispatch(updateUser({ status: "rejected" }));
-        navigation.navigate("Login/Signup");
+        resetTo("Login/Signup");
       } else {
         Toast.show({ type: "info", text1: "Application is still under review." });
       }
@@ -75,7 +84,7 @@ const PendingApprovalScreen = () => {
       // owner who can't reach the backend.
     } finally {
       dispatch(logout());
-      navigation.navigate("Login/Signup");
+      resetTo("Login/Signup");
       Toast.show({ type: "success", text1: "Logged out successfully" });
     }
   };

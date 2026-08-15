@@ -33,6 +33,9 @@ import {
   Sparkles,
   Bell,
   AlertTriangle,
+  MoreHorizontal,
+  ChevronRight,
+  ArrowLeft,
 } from "lucide-react-native";
 
 // IMPORT MANAGERS
@@ -46,6 +49,33 @@ import ActiveTablesManager from "./ActiveTablesManager";
 import StaffManager from "./StaffManager";
 import HappyHoursManager from "./HappyHoursManager";
 import NotificationManager from "./NotificationManager";
+
+// The five bottom-bar destinations. Everything not here is reached through
+// "More", which keeps the bar readable - five is about the most that fits
+// without the labels truncating on a narrow phone.
+//
+// `id` values are the same activeTab ids the dashboard already used for its
+// old horizontal tab strip, so permission gating (canAccessTab) and the
+// landing-tab logic (getDefaultTab) keep working untouched.
+const BOTTOM_TABS = [
+  { id: "overview", label: "Home", icon: LayoutDashboard },
+  { id: "orders", label: "Orders", icon: ClipboardList },
+  { id: "active_tables", label: "Tables", icon: LayoutGrid },
+  { id: "menu", label: "Menu", icon: BookOpen },
+  { id: "more", label: "More", icon: MoreHorizontal },
+];
+
+// The secondary sections, listed on the More page. Notifications is included
+// even though it is not one of the five: it has no bottom-bar slot, so
+// leaving it out would make NotificationManager unreachable entirely.
+const MORE_SECTIONS = [
+  { id: "settings", label: "App Settings", icon: Settings, hint: "Documents, timings, preferences" },
+  { id: "staff", label: "Staff", icon: Users, hint: "Team members and permissions" },
+  { id: "marketing", label: "Happy Hours", icon: Sparkles, hint: "Scheduled offers and discounts" },
+  { id: "qr", label: "QR Codes", icon: QrCode, hint: "Generate and print table codes" },
+  { id: "profile", label: "Profile", icon: User, hint: "Restaurant details and address" },
+  { id: "notifications", label: "Notifications", icon: Bell, hint: "Order and system alerts" },
+];
 
 const RestaurantDashboard = () => {
   const [restaurant, setRestaurant] = useState<any>(null);
@@ -150,7 +180,10 @@ const RestaurantDashboard = () => {
     try {
       await (isOwner ? logoutRestaurant() : logoutStaff());
       dispatch(logout());
-      navigation.navigate("Home");
+      // Back to the sign-in screen. This used to go to "Home", which is no
+      // longer a registered route - logging out would have left the user on
+      // the dashboard with nothing appearing to happen.
+      navigation.navigate("Login/Signup");
     } catch (error: any) {
       console.log("Error logging out", error);
     }
@@ -166,18 +199,25 @@ const RestaurantDashboard = () => {
   const hasUploadedDocument = Array.isArray(restaurant?.documents) && restaurant.documents.some((d: any) => d.documentUrl);
   const showDocumentWarning = isOwner && !!restaurant && !hasUploadedDocument;
 
-  const TabButton = ({ id, label, icon: Icon }: { id: string, label: string, icon: any }) => {
-    const isActive = activeTab === id;
-    return (
-      <TouchableOpacity 
-        style={[styles.tabButton, isActive && styles.tabButtonActive]} 
-        onPress={() => setActiveTab(id)}
-      >
-        <Icon size={18} color={isActive ? "#fff" : "#6b7280"} />
-        <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{label}</Text>
-      </TouchableOpacity>
-    );
-  };
+  // Sections this user may actually open from the More page.
+  const visibleMoreSections = MORE_SECTIONS.filter(section =>
+    canAccessTab(section.id, { isOwner, can }),
+  );
+
+  // A secondary section is open (not the More list itself). Used both to keep
+  // the More tab lit while you are inside one, and to decide whether to show
+  // the "back to More" row.
+  const openMoreSection = visibleMoreSections.find(section => section.id === activeTab);
+
+  // "more" has no TAB_ACCESS rule of its own - canAccessTab would return true
+  // for it unconditionally - so it is gated on whether it would have anything
+  // to list. Staff with no secondary permissions get no More tab at all
+  // rather than a tab onto an empty page.
+  const visibleBottomTabs = BOTTOM_TABS.filter(tab =>
+    tab.id === "more"
+      ? visibleMoreSections.length > 0
+      : canAccessTab(tab.id, { isOwner, can }),
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -205,34 +245,24 @@ const RestaurantDashboard = () => {
         }}
       />
 
-      {/* 1. MOBILE HEADER */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.restaurantName} numberOfLines={1}>
-            {restaurant?.restaurantName || "Restaurant Partner"}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => setLogoutModalVisible(true)} style={styles.logoutButton}>
-          <LogOut size={20} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
+      {/* The "Welcome back, <restaurant>" bar with its logout button used to
+          sit here. It was a third stacked header (app header, this, then each
+          panel's own title), so it is gone: the app header above covers
+          branding, and logout moved to the More page and the Profile panel. */}
 
-      {/* 2. MOBILE SCROLLABLE TAB MENU */}
-      <View style={styles.tabContainer}>
-        <ScrollView  keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollTabs} >
-          {canAccessTab("overview", { isOwner, can }) && <TabButton id="overview" label="Overview" icon={LayoutDashboard} />}
-          {canAccessTab("orders", { isOwner, can }) && <TabButton id="orders" label="Orders" icon={ClipboardList} />}
-          {canAccessTab("active_tables", { isOwner, can }) && <TabButton id="active_tables" label="Active Tables" icon={LayoutGrid} />}
-          {canAccessTab("menu", { isOwner, can }) && <TabButton id="menu" label="Menu" icon={BookOpen} />}
-          {canAccessTab("staff", { isOwner, can }) && <TabButton id="staff" label="Staff" icon={Users} />}
-          {canAccessTab("marketing", { isOwner, can }) && <TabButton id="marketing" label="Happy Hours" icon={Sparkles} />}
-          {canAccessTab("qr", { isOwner, can }) && <TabButton id="qr" label="QR Codes" icon={QrCode} />}
-          {canAccessTab("notifications", { isOwner, can }) && <TabButton id="notifications" label="Notifications" icon={Bell} />}
-          {canAccessTab("profile", { isOwner, can }) && <TabButton id="profile" label="Profile" icon={User} />}
-          {canAccessTab("settings", { isOwner, can }) && <TabButton id="settings" label="Settings" icon={Settings} />}
-        </ScrollView>
-      </View>
+      {/* 2. SECTION BAR - only inside a More section, as a way back to the
+             More list. The five bottom-bar destinations are always one tap
+             away and need no such affordance. */}
+      {openMoreSection && (
+        <TouchableOpacity
+          style={styles.sectionBar}
+          onPress={() => setActiveTab("more")}
+          activeOpacity={0.7}
+        >
+          <ArrowLeft size={18} color="#374151" />
+          <Text style={styles.sectionBarText}>{openMoreSection.label}</Text>
+        </TouchableOpacity>
+      )}
 
       {/* 3. DOCUMENT SUSPENSION WARNING - shown above every tab until at
           least one government document has an uploaded file. */}
@@ -278,6 +308,44 @@ const RestaurantDashboard = () => {
             />
           }
         >
+          {activeTab === "more" && (
+            <View style={styles.moreList}>
+              {visibleMoreSections.map(({ id, label, icon: Icon, hint }) => (
+                <TouchableOpacity
+                  key={id}
+                  style={styles.moreRow}
+                  onPress={() => setActiveTab(id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.moreIconBox}>
+                    <Icon size={18} color="#ea580c" />
+                  </View>
+                  <View style={styles.moreRowText}>
+                    <Text style={styles.moreRowLabel}>{label}</Text>
+                    <Text style={styles.moreRowHint}>{hint}</Text>
+                  </View>
+                  <ChevronRight size={18} color="#9ca3af" />
+                </TouchableOpacity>
+              ))}
+
+              {/* Logout closes the list, after Notifications. It is the one
+                  destructive action here, so it is separated and tinted red
+                  rather than sitting in the run of ordinary sections. */}
+              <TouchableOpacity
+                style={[styles.moreRow, styles.moreRowLogout]}
+                onPress={() => setLogoutModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.moreIconBox, styles.moreIconBoxLogout]}>
+                  <LogOut size={18} color="#ef4444" />
+                </View>
+                <View style={styles.moreRowText}>
+                  <Text style={[styles.moreRowLabel, styles.moreRowLabelLogout]}>Log Out</Text>
+                  <Text style={styles.moreRowHint}>Sign out of this device</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
           {activeTab === "overview" && canAccessTab("overview", { isOwner, can }) && <OverviewManager key={refreshKey} />}
           {activeTab === "orders" && canAccessTab("orders", { isOwner, can }) && <OrderManager key={refreshKey} />}
           {activeTab === "active_tables" && canAccessTab("active_tables", { isOwner, can }) && <ActiveTablesManager key={refreshKey} />}
@@ -295,6 +363,33 @@ const RestaurantDashboard = () => {
           )}
         </ScrollView>
       )}
+
+      {/* 5. BOTTOM TAB BAR - restaurant dashboard only. It lives inside this
+             screen rather than being a real tab navigator because every
+             destination is a panel this component already renders and gates
+             by permission; promoting them to routes would duplicate all of
+             that and pull refreshKey/autoOpenAddDoc state across navigators. */}
+      <View style={styles.bottomBar}>
+        {visibleBottomTabs.map(({ id, label, icon: Icon }) => {
+          // The More tab stays lit while any of its sections is open, so the
+          // bar always shows where you are rather than going blank.
+          const isActive =
+            id === "more" ? activeTab === "more" || !!openMoreSection : activeTab === id;
+          return (
+            <TouchableOpacity
+              key={id}
+              style={styles.bottomTab}
+              onPress={() => setActiveTab(id)}
+              activeOpacity={0.7}
+            >
+              <Icon size={20} color={isActive ? "#ea580c" : "#9ca3af"} />
+              <Text style={[styles.bottomTabLabel, isActive && styles.bottomTabLabelActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
     </SafeAreaView>
   );
@@ -347,35 +442,90 @@ const styles = StyleSheet.create({
   },
 
   // Tab Menu Styles
-  tabContainer: {
-    borderBottomWidth: 1,
-    borderColor: "#f3f4f6",
-    backgroundColor: "#ffffff",
-  },
-  scrollTabs: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  tabButton: {
+  // Bar shown only inside a More section, as the way back to the More list.
+  sectionBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f3f4f6",
+    gap: 10,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 100,
-    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderColor: "#f3f4f6",
   },
-  tabButtonActive: {
-    backgroundColor: "#ea580c",
+  sectionBarText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#1f2937",
   },
-  tabText: {
-    fontSize: 14,
-    fontWeight: "bold",
+
+  // The More page: a list of the sections that have no bottom-bar slot.
+  moreList: {
+    padding: 16,
+    gap: 10,
+  },
+  moreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  moreIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff7ed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moreRowText: { flex: 1 },
+  moreRowLabel: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1f2937",
+  },
+  moreRowHint: {
+    fontSize: 12,
     color: "#6b7280",
+    marginTop: 2,
   },
-  tabTextActive: {
-    color: "#ffffff",
+  moreRowLogout: {
+    marginTop: 6,
+    borderColor: "#fee2e2",
+  },
+  moreIconBoxLogout: {
+    backgroundColor: "#fef2f2",
+  },
+  moreRowLabelLogout: {
+    color: "#ef4444",
+  },
+
+  bottomBar: {
+    flexDirection: "row",
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderColor: "#f1f5f9",
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  bottomTab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  bottomTabLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#9ca3af",
+  },
+  bottomTabLabelActive: {
+    color: "#ea580c",
   },
 
   mainContent: {

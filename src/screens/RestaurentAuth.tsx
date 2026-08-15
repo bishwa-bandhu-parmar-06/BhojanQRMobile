@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -35,6 +36,23 @@ const RestaurentAuth = () => {
       }
     }, [])
   );
+
+  // Hidden admin entry: five taps on the brand icon, each within a second of
+  // the last. Held in refs rather than state because nothing renders from
+  // them - using state would re-render the whole form on every tap.
+  const tapCountRef = useRef(0);
+  const lastTapRef = useRef(0);
+
+  const handleLogoTap = () => {
+    const now = Date.now();
+    tapCountRef.current = now - lastTapRef.current < 1000 ? tapCountRef.current + 1 : 1;
+    lastTapRef.current = now;
+
+    if (tapCountRef.current === 5) {
+      tapCountRef.current = 0;
+      navigation.navigate('AdminAuth');
+    }
+  };
 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -108,7 +126,14 @@ const RestaurentAuth = () => {
           // server-side) but shouldn't see the dashboard yet - mirrors the
           // website's ProtectedRoute redirect to /restaurant/pending-approval.
           const destination = userData?.status === "pending" ? "PendingApproval" : "RestaurantDashboard";
-          setTimeout(() => navigation.navigate(destination), 1500);
+          // reset, not navigate: this screen must not stay underneath in the
+          // stack, or the back gesture would drop a signed-in owner straight
+          // back onto the login form. Signing out is the only way back here,
+          // and the dashboards' logout handlers navigate here explicitly.
+          setTimeout(
+            () => navigation.reset({ index: 0, routes: [{ name: destination }] }),
+            1500,
+          );
         }
       } else {
         const formData = new FormData();
@@ -180,9 +205,26 @@ const RestaurentAuth = () => {
             
             {/* HEADER SECTION */}
             <View style={styles.headerSection}>
-              <View style={styles.iconContainer}>
-                <FontAwesome5 name="store" size={32} color="#ea580c" />
-              </View>
+              {/* Five quick taps here open the hidden admin login. This used
+                  to live on the app header's logo, but the header is no
+                  longer on every screen and this auth screen is now the
+                  landing screen - so the shortcut lives where an operator
+                  will actually be. Nothing marks it: it is meant to be
+                  discoverable only by someone who already knows. */}
+              <TouchableOpacity
+                onPress={handleLogoTap}
+                activeOpacity={1}
+                accessibilityRole="image"
+                accessibilityLabel="BhojanQR"
+              >
+                <View style={styles.iconContainer}>
+                  <Image
+                    source={require('../../assets/bhojanqr-icon.png')}
+                    style={styles.brandIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </TouchableOpacity>
               <Text style={styles.mainTitle}>Bhojan<Text style={{ color: '#166534' }}>QR</Text> Partner</Text>
               <Text style={styles.subTitle}>
                 Grow your restaurant's reach, manage digital menus, and streamline your order pipeline.
@@ -398,14 +440,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
+  // No background tint any more: the asset is a circular badge with its own
+  // pale ground, so the old peach rounded square framed it with a second,
+  // clashing shape.
   iconContainer: {
-    width: 72,
-    height: 72,
-    backgroundColor: '#ffedd5',
-    borderRadius: 24,
+    width: 96,
+    height: 96,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
+  },
+  brandIcon: {
+    width: 96,
+    height: 96,
   },
   mainTitle: {
     fontSize: 28,

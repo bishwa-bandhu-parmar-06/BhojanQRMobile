@@ -14,21 +14,20 @@ import LinearGradient from 'react-native-linear-gradient';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import Toast from 'react-native-toast-message';
 
-import { forgotPasswordCustomer } from '../../API/customerApi';
 import { forgotPasswordRestaurant } from '../../API/restaurentApi';
 import { forgotPasswordAdmin } from '../../API/adminApi';
 import { navigateToScreen } from '../../utils/navigation';
 
-type Role = 'customer' | 'restaurant' | 'admin';
+// Customer is deliberately absent: the app no longer has a customer login to
+// send anyone back to, so a customer reset has to be done on the website.
+type Role = 'restaurant' | 'admin';
 
 const ROLE_COPY: Record<Role, { title: string; loginScreen: string }> = {
-  customer: { title: 'Customer Account', loginScreen: 'CustomerAuth' },
   restaurant: { title: 'Restaurant Partner', loginScreen: 'Login/Signup' },
   admin: { title: 'Admin Account', loginScreen: 'AdminAuth' },
 };
 
 const sendForgotPassword = (role: Role, email: string) => {
-  if (role === 'customer') return forgotPasswordCustomer(email);
   if (role === 'restaurant') return forgotPasswordRestaurant(email);
   return forgotPasswordAdmin(email);
 };
@@ -36,7 +35,7 @@ const sendForgotPassword = (role: Role, email: string) => {
 const ForgotPassword = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const role: Role = route.params?.role || 'customer';
+  const role: Role = route.params?.role || 'restaurant';
   const copy = ROLE_COPY[role];
 
   const [email, setEmail] = useState('');

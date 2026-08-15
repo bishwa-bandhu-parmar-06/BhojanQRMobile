@@ -50,7 +50,13 @@ const StaffAuth = () => {
           dispatch(loginSuccess({ user: userData }));
         }
         Toast.show({ type: 'success', text1: 'Welcome back!' });
-        navigateToScreen(navigation, 'RestaurantDashboard');
+        // reset rather than navigateToScreen: StaffAuth is a root-stack
+        // screen, so navigating would leave it underneath and the back
+        // gesture would return signed-in staff to the login form.
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'RestaurantDashboard' } }],
+        });
       }
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'Invalid credentials';

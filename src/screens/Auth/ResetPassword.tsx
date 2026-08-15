@@ -16,22 +16,22 @@ import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import Toast from 'react-native-toast-message';
 
 import { loginSuccess } from '../../Features/AuthSlice';
-import { resetPasswordCustomer } from '../../API/customerApi';
 import { resetPasswordRestaurant } from '../../API/restaurentApi';
 import { resetPasswordAdmin } from '../../API/adminApi';
 import { setToken } from '../../utils/tokenStorage';
 import { navigateToScreen } from '../../utils/navigation';
 
-type Role = 'customer' | 'restaurant' | 'admin';
+// Customer is deliberately absent: a successful reset logs the user straight
+// in and drops them on their dashboard, and neither a customer login nor a
+// customer dashboard exists in the app any more.
+type Role = 'restaurant' | 'admin';
 
 const ROLE_COPY: Record<Role, { title: string; loginScreen: string; dashboard: string }> = {
-  customer: { title: 'Customer Account', loginScreen: 'CustomerAuth', dashboard: 'CustomerDashboard' },
   restaurant: { title: 'Restaurant Partner', loginScreen: 'Login/Signup', dashboard: 'RestaurantDashboard' },
   admin: { title: 'Admin Account', loginScreen: 'AdminAuth', dashboard: 'AdminDashboard' },
 };
 
 const sendResetPassword = (role: Role, token: string, password: string) => {
-  if (role === 'customer') return resetPasswordCustomer(token, password);
   if (role === 'restaurant') return resetPasswordRestaurant(token, password);
   return resetPasswordAdmin(token, password);
 };
@@ -40,7 +40,7 @@ const ResetPassword = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const dispatch = useDispatch();
-  const role: Role = route.params?.role || 'customer';
+  const role: Role = route.params?.role || 'restaurant';
   const copy = ROLE_COPY[role];
 
   const [token, setToken_] = useState(route.params?.token || '');

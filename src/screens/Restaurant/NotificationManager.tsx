@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { useDispatch } from "react-redux";
 import Toast from "react-native-toast-message";
 import { Bell, CheckCircle2, Info, ShoppingBag, ShieldAlert, ShieldCheck, Trash2, Check } from "lucide-react-native";
 
@@ -13,6 +14,7 @@ import {
 import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
 import SectionError from "../../components/SectionError";
+import { setHasUnread } from "../../Features/NotificationSlice";
 
 interface Notification {
   _id: string;
@@ -32,6 +34,7 @@ const ICONS: Record<string, { Icon: any; color: string }> = {
 };
 
 const NotificationManager = () => {
+  const dispatch = useDispatch();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -42,7 +45,11 @@ const NotificationManager = () => {
       setLoadError(false);
       const res = await getRestaurantNotifications();
       if (res.data?.success) {
-        setNotifications(res.data.data || []);
+        const list = res.data.data || [];
+        setNotifications(list);
+        // Keep the header bell honest: this is the freshest read of the list
+        // anywhere in the app, so it is the right place to settle the badge.
+        dispatch(setHasUnread(list.some((n: Notification) => !n.isRead)));
       }
     } catch {
       Toast.show({ type: "error", text1: "Could not load notifications" });
@@ -63,6 +70,7 @@ const NotificationManager = () => {
     }
     try {
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      dispatch(setHasUnread(false));
       await markAllNotificationsAsRead();
     } catch {
       Toast.show({ type: "error", text1: "Failed to mark all as read" });

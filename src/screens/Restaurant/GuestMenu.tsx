@@ -22,8 +22,6 @@ import {
   LayoutGrid,
   List,
   AlertCircle,
-  AlertTriangle,
-  ShieldCheck,
 } from 'lucide-react-native';
 
 import { getPublicMenu } from '../../API/menuApi';
@@ -63,13 +61,13 @@ const GuestMenu = () => {
   const cartItems = useSelector((state: any) => state.cart?.items || []);
   const cartCount = cartItems.length;
 
-  // Dietary/allergen highlighting - mirrors the website's PublicMenu.jsx.
-  // Only a logged-in customer can have saved preferences at all (restaurant
-  // owners/staff/guests never will), same gate the website uses.
-  const authUser = useSelector((state: any) => state.auth?.user);
-  const prefs = authUser?.role === 'customer' ? authUser.preferences : null;
-  const hasDietaryPrefs = !!prefs?.dietary?.length;
-  const [showOnlyCompatible, setShowOnlyCompatible] = useState(false);
+  // Dietary/allergen highlighting and the "compatible only" filter used to
+  // live here, driven by a logged-in customer's saved preferences. Customer
+  // accounts no longer exist in the mobile app, so nothing could ever supply
+  // those preferences - the whole feature is gone rather than left as code
+  // that can only ever evaluate to "no preferences set". The website still
+  // has it, and MenuItem below still carries dietaryTags/allergens, so it can
+  // come back with whatever replaces customer accounts here.
 
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
   const [restaurantName, setRestaurantName] = useState('Loading...');
@@ -206,31 +204,18 @@ const GuestMenu = () => {
     }
   };
 
-  const matchesDietaryFilter = (item: MenuItem) =>
-    !showOnlyCompatible ||
-    !hasDietaryPrefs ||
-    prefs.dietary.some((tag: string) => item.dietaryTags?.includes(tag));
-
   const filteredItems = useMemo(() => {
     return allMenuItems.filter((item) => {
       const matchCategory = selectedCategory === 'All' || item.category === selectedCategory;
       const matchPrice = item.price <= (parseInt(priceRange) || 99999);
-      return matchCategory && matchPrice && matchesDietaryFilter(item);
+      return matchCategory && matchPrice;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allMenuItems, selectedCategory, priceRange, showOnlyCompatible, hasDietaryPrefs]);
+  }, [allMenuItems, selectedCategory, priceRange]);
 
   const categories = ['All', ...new Set(allMenuItems.map((item) => item.category))];
 
   // --- RENDERERS ---
   const renderItem = ({ item }: { item: MenuItem }) => {
-    const conflictingAllergens = prefs?.allergies?.length
-      ? item.allergens?.filter((a) => prefs.allergies.includes(a)) || []
-      : [];
-    const matchingDietaryTags = hasDietaryPrefs
-      ? item.dietaryTags?.filter((t) => prefs.dietary.includes(t)) || []
-      : [];
-
     const bestOffer = activeOffers.length
       ? evaluateBestOfferForItem({
           offers: activeOffers,
@@ -241,9 +226,10 @@ const GuestMenu = () => {
       : null;
 
     const handleAdd = () => {
-      // Auto-fills the order note from the customer's saved "special notes"
-      // preference (e.g. "Make it Jain") - mirrors the website's
-      // PublicMenu.jsx so the customer doesn't have to retype it every time.
+      // The note used to be pre-filled from the customer's saved "special
+      // notes" preference; with no customer accounts there is nothing to
+      // pre-fill from, so every line starts blank and the diner types their
+      // own note in the Cart.
       const cartItem = bestOffer
         ? {
             ...item,
@@ -253,9 +239,9 @@ const GuestMenu = () => {
             offerId: bestOffer.offerId,
             offerName: bestOffer.offerName,
             lockedAt: Date.now(),
-            note: prefs?.specialNotes || '',
+            note: '',
           }
-        : { ...item, note: prefs?.specialNotes || '' };
+        : { ...item, note: '' };
       dispatch(addToCart(cartItem));
       Toast.show({ type: 'success', text1: `${item.name} added!` });
     };
@@ -264,7 +250,6 @@ const GuestMenu = () => {
       <View style={[
         styles.card,
         viewMode === 'list' ? styles.cardList : styles.cardGrid,
-        matchingDietaryTags.length > 0 && styles.cardDietaryMatch,
       ]}>
         <View style={[styles.imageContainer, viewMode === 'list' ? styles.imageContainerList : styles.imageContainerGrid]}>
           <MenuImage uri={item.imageUrl} style={styles.image} />
@@ -289,23 +274,6 @@ const GuestMenu = () => {
           <Text style={styles.itemDesc} numberOfLines={2}>
             {item.description || "Freshly prepared for you."}
           </Text>
-
-          {(conflictingAllergens.length > 0 || matchingDietaryTags.length > 0) && (
-            <View style={styles.tagBadgeRow}>
-              {conflictingAllergens.map((a) => (
-                <View key={a} style={styles.allergenBadge}>
-                  <AlertTriangle size={9} color="#dc2626" />
-                  <Text style={styles.allergenBadgeText}>Contains {a}</Text>
-                </View>
-              ))}
-              {matchingDietaryTags.map((t) => (
-                <View key={t} style={styles.dietaryBadge}>
-                  <ShieldCheck size={9} color="#15803d" />
-                  <Text style={styles.dietaryBadgeText}>{t}</Text>
-                </View>
-              ))}
-            </View>
-          )}
 
           {bestOffer && (
             <View style={styles.offerBadge}>
@@ -429,17 +397,6 @@ const GuestMenu = () => {
               onChangeText={setPriceRange}
             />
           </View>
-          {hasDietaryPrefs && (
-            <TouchableOpacity
-              style={[styles.compatibleToggle, showOnlyCompatible && styles.compatibleToggleActive]}
-              onPress={() => setShowOnlyCompatible((prev) => !prev)}
-            >
-              <ShieldCheck size={14} color={showOnlyCompatible ? '#fff' : '#16a34a'} />
-              <Text style={[styles.compatibleToggleText, showOnlyCompatible && styles.compatibleToggleTextActive]}>
-                Show only compatible
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
       )}
 
@@ -528,21 +485,11 @@ const styles = StyleSheet.create({
   catTextActive: { color: '#fff' },
   priceFilterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   priceInput: { backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, width: 80, fontWeight: 'bold', color: '#ea580c' },
-  compatibleToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#bbf7d0', backgroundColor: '#f0fdf4' },
-  compatibleToggleActive: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
-  compatibleToggleText: { fontSize: 13, fontWeight: '700', color: '#16a34a' },
-  compatibleToggleTextActive: { color: '#fff' },
 
   // List & Cards
   listContent: { padding: 16, paddingBottom: 100 },
   gridRow: { justifyContent: 'space-between' },
   card: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: '#f3f4f6', elevation: 1 },
-  cardDietaryMatch: { borderWidth: 2, borderColor: '#86efac' },
-  tagBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 4 },
-  allergenBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  allergenBadgeText: { fontSize: 9, fontWeight: '700', color: '#dc2626' },
-  dietaryBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  dietaryBadgeText: { fontSize: 9, fontWeight: '700', color: '#15803d' },
   cardList: { flexDirection: 'row', height: 140 },
   cardGrid: { width: '48%', flexDirection: 'col' as any },
   imageContainer: { position: 'relative', backgroundColor: '#f3f4f6' },

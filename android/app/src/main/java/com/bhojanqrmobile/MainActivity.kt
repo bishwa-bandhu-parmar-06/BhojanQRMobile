@@ -1,7 +1,6 @@
 package com.bhojanqrmobile
 
-import android.os.Bundle 
-import com.zoontek.rnbootsplash.RNBootSplash 
+import android.os.Bundle
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -11,7 +10,12 @@ class MainActivity : ReactActivity() {
 
  
   override fun onCreate(savedInstanceState: Bundle?) {
-    RNBootSplash.init(this, R.style.BootTheme) 
+    // RNBootSplash.init() used to run here. The native splash is gone
+    // entirely: the app's only splash is src/components/SplashScreen.tsx.
+    // What Android still shows before JS is ready is the launch window, which
+    // is just AppTheme's windowBackground - a flat #fff7ed field matching
+    // SplashScreen's own background, so there is no white flash and no second
+    // splash image, only the cream that SplashScreen then draws onto.
     super.onCreate(null) // Using null is safer for React Navigation
   }
 

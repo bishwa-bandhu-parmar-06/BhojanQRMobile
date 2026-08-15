@@ -19,7 +19,6 @@ import { clearCart } from "../Features/CartSlice";
 
 import ContactForm from "../components/ContactForm";
 
-import FloatingQRScanner from "../components/FloatingQRScanner";
 import BhojanSupportBot from "../components/BhojanSupportBot";
 
 const { width } = Dimensions.get("window");
@@ -232,12 +231,10 @@ const Home = () => {
 
         </ScrollView>
 
-        {/*  NAYA FLOATING SCANNER COMPONENT YAHAN LAGA DIYA */}
-        <FloatingQRScanner />
-
-        {/* Mirrors the website's Home.jsx mounting of BhojanSupportBot -
-            placed bottom-left since FloatingQRScanner already owns the
-            bottom-right corner on this screen. */}
+        {/* Mirrors the website's Home.jsx mounting of BhojanSupportBot. It
+            sat bottom-left to stay clear of the floating QR scanner that used
+            to own the bottom-right corner; that scanner is gone, so this now
+            has the whole bottom edge to itself. */}
         <BhojanSupportBot />
 
         {showContactForm && (
