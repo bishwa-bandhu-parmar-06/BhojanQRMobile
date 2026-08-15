@@ -11,6 +11,7 @@ import {
   Modal,
 } from "react-native";
 import Toast from "react-native-toast-message";
+import { useSelector } from "react-redux";
 import {
   ShoppingBag,
   IndianRupee,
@@ -25,20 +26,36 @@ import { getRestaurantOrders, updateOrderStatus } from "../../API/orderApi";
 import {
   ALL_ORDER_STATUSES,
   ORDER_STATUS_FLOW,
-  isArchivedOrder,
+  getStatusMeta,
+  isArchivedGroup,
+  groupBySession,
   TERMINAL_ORDER_STATUSES,
 } from "../../constants/orderStatus";
 import { useArchiveTick } from "../../hooks/useArchiveTick";
 import CustomModal from "../../components/CustomModal";
+import LoadMoreButton from "../../components/LoadMoreButton";
 import { SkeletonBlock } from "../../components/Skeleton";
 import { socket } from "../../utils/socket";
+import { formatMoney } from "../../utils/money";
 
 // The order cards carry no margin of their own - they used to sit in a View
 // with `gap: 16`, which FlatList rows do not inherit. Declared at module scope
 // so it is a stable component type rather than a new one each render.
 const OrderSeparator = () => <View style={styles.listSeparator} />;
 
+// Cards rendered up front, and added per "Load more" tap.
+const ORDER_PAGE_SIZE = 20;
+
 const OrderManager = () => {
+  // Mirrors orderRoutes.js. The server is the authority - this decides what is
+  // worth drawing, so a member who can only watch the board is not offered
+  // status buttons that answer 403.
+  const user = useSelector((state: any) => state.auth?.user);
+  const isOwner = user?.role === "restaurant";
+  const perms: string[] = isOwner ? [] : user?.permissions || [];
+  const canUpdateStatus = isOwner || perms.includes("manage_orders");
+  const canCancel = isOwner || perms.includes("cancel_orders");
+
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -52,9 +69,12 @@ const OrderManager = () => {
   // earlier one and silently get reverted by the server's stale-update guard.
   const orderUpdateQueueRef = useRef<Record<string, Promise<any>>>({});
 
-  const fetchOrders = async () => {
+  // `fresh` is passed only by the refresh button and pull-to-refresh. The
+  // 30s poll and the socket handler deliberately use the cache: making every
+  // background tick bypass it would keep the database busy for no benefit.
+  const fetchOrders = async (fresh = false) => {
     try {
-      const res = await getRestaurantOrders();
+      const res = await getRestaurantOrders(fresh);
       if (res.data.success) {
         setOrders(res.data.data);
       }
@@ -66,8 +86,11 @@ const OrderManager = () => {
   };
 
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 30000);
+    // Mounting means a tab switch or a dashboard refresh - both are someone
+    // asking for current data, so this one skips the cache. The poll after it
+    // does not: renewing a correct entry every 30s is the cache doing its job.
+    fetchOrders(true);
+    const interval = setInterval(() => fetchOrders(false), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -89,7 +112,7 @@ const OrderManager = () => {
 
   const handlePullRefresh = async () => {
     setIsRefreshing(true);
-    await fetchOrders();
+    await fetchOrders(true);
     setIsRefreshing(false);
   };
 
@@ -144,10 +167,17 @@ const OrderManager = () => {
     [orders],
   );
   const now = useArchiveTick(hasPendingArchive);
-  const liveOrders = useMemo(
-    () => orders.filter((o) => !isArchivedOrder(o, now)),
-    [orders, now],
-  );
+
+  // Archiving is decided per SESSION, not per order. A table with three
+  // orders keeps all three on the board until the last one is finished, so a
+  // combined session never loses a batch out from under it and never shrinks
+  // to a "combined" card standing in for one remaining order.
+  const liveOrders = useMemo(() => {
+    const groups = groupBySession(orders);
+    return groups
+      .filter((group) => !isArchivedGroup(group, now))
+      .flat();
+  }, [orders, now]);
 
   // One bucket per status in the 7-state lifecycle, generated from the
   // shared constant - mirrors the website's OrderManager.jsx segmentation.
@@ -177,6 +207,20 @@ const OrderManager = () => {
     [segmentedOrders, activeFilter],
   );
 
+  // How many order groups are actually built. The orders endpoint is not
+  // paginated - the whole working set arrives in one response - so "Load
+  // more" here is a RENDER budget, not another request. It exists because
+  // this list rebuilds on every socket event, and mounting three hundred
+  // cards each time a single status changes is what makes a busy service
+  // feel sluggish.
+  const [visibleCount, setVisibleCount] = useState(ORDER_PAGE_SIZE);
+
+  // Changing filter should start from the top again, not keep a count scrolled
+  // up under a different set of rows.
+  useEffect(() => {
+    setVisibleCount(ORDER_PAGE_SIZE);
+  }, [activeFilter]);
+
   // Customers can place multiple separate orders during one dining visit
   // (e.g. starters, then mains) - the backend tags every order from the same
   // table-scan visit with the same tableSessionId. Group on that so repeat
@@ -184,14 +228,16 @@ const OrderManager = () => {
   // instead of as unrelated, disconnected orders - mirrors the website's
   // OrderList.jsx grouping exactly.
   const groupedVisibleOrders = useMemo(() => {
-    const map: Record<string, any[]> = {};
-    visibleOrders.forEach((order) => {
-      const key = order.tableSessionId || order._id;
-      if (!map[key]) map[key] = [];
-      map[key].push(order);
-    });
-    return Object.values(map);
+    return groupBySession(visibleOrders);
   }, [visibleOrders]);
+
+  // Grouping happens first so the budget counts CARDS on screen, not raw
+  // orders - one table with six orders is a single card.
+  const renderedOrders = useMemo(
+    () => groupedVisibleOrders.slice(0, visibleCount),
+    [groupedVisibleOrders, visibleCount],
+  );
+  const hasMoreOrders = groupedVisibleOrders.length > renderedOrders.length;
 
   useEffect(() => {
     if (!activeSession) return;
@@ -207,10 +253,131 @@ const OrderManager = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders]);
 
-  const renderOrderCard = (order: any) => (
+  // LIST: a slim row - table, customer, and the status controls as bare
+  // icons. The full card belongs in grid, where the two-column layout gives
+  // each order its own block; a column of full cards means two orders on
+  // screen at once, which is the wrong shape for working through a queue.
+  //
+  // Icons carry no labels here: the six stages are a fixed, ordered sequence
+  // that anyone using this screen learns in a shift, and the labels were what
+  // forced the row to be tall enough to fit them.
+  const renderOrderRow = (order: any) => {
+    const meta = getStatusMeta(order.status);
+    const itemCount = (order.items || []).reduce(
+      (sum: number, it: any) => sum + (it.quantity || 0),
+      0,
+    );
+
+    return (
+      <View key={order._id} style={styles.row}>
+        {/* Status as a coloured edge - the state of every row is readable
+            scanning straight down the left, without reading a word. */}
+        <View style={[styles.rowAccent, { backgroundColor: meta.color }]} />
+
+        <View style={styles.rowBody}>
+          {/* Opening the detail is a tap on the identity block only, NOT the
+              whole row - the status icons below are inside it, and wrapping
+              everything would make every stage change also open a screen. */}
+          <TouchableOpacity
+            style={styles.rowTop}
+            activeOpacity={0.7}
+            onPress={() => setActiveSession({ tableNumber: order.tableNumber, orders: [order] })}
+          >
+            <View style={styles.rowTableBadge}>
+              <Text style={styles.rowTableBadgeText}>T{order.tableNumber}</Text>
+            </View>
+            <Text style={styles.rowCustomer} numberOfLines={1}>
+              {order.customerName}
+            </Text>
+            {/* Kept despite "name and table only": an orders list with no
+                money on it makes you open every row to find the one you are
+                looking for. It is one small right-aligned number. */}
+            <Text style={styles.rowTotal}>₹{formatMoney(order.totalPrice)}</Text>
+            <ChevronRight size={15} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <Text style={styles.rowMeta}>
+            {itemCount} item{itemCount === 1 ? "" : "s"} ·{" "}
+            {new Date(order.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            {order.paymentStatus === "Paid" ? " · Paid" : " · Payment pending"}
+          </Text>
+
+          {/* Horizontally scrollable so all six stages plus cancel stay
+              reachable on a narrow phone without shrinking the targets.
+              Hidden entirely without manage_orders: a row of buttons that
+              all 403 is worse than a row that reads as information only. */}
+          {canUpdateStatus && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={styles.rowActionsScroll}
+            contentContainerStyle={styles.rowActions}
+          >
+            {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }) => {
+              const isCurrent = order.status === value;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  onPress={() => handleStatusChange(order._id, value)}
+                  style={[
+                    styles.iconBtn,
+                    isCurrent
+                      ? { backgroundColor: `${color}1a`, borderColor: color }
+                      : styles.iconBtnInactive,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                >
+                  <Icon size={16} color={isCurrent ? color : "#9ca3af"} />
+                </TouchableOpacity>
+              );
+            })}
+
+            {canCancel &&
+              order.status !== "Cancelled" &&
+              order.status !== "Completed" && (
+                <TouchableOpacity
+                  onPress={() => requestCancel(order._id)}
+                  style={[styles.iconBtn, styles.iconBtnCancel]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel order"
+                >
+                  <XCircle size={16} color="#dc2626" />
+                </TouchableOpacity>
+              )}
+          </ScrollView>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  // GRID: the full card, two to a row - every item and every status
+  // transition. This is the detailed view now, so the item list is capped:
+  // at half width an eight-dish order wrapped every name onto three lines.
+  const renderOrderCard = (order: any, expanded = false) => (
     <View key={order._id} style={styles.card}>
-      {/* Order Header */}
-      <View style={styles.cardHeader}>
+      {/* A status-coloured edge, so the state of each row is readable while
+          scanning down the left of the list without reading any text. */}
+      <View
+        style={[styles.cardAccent, { backgroundColor: getStatusMeta(order.status).color }]}
+      />
+      {/* Order Header - also the tap target for the full detail screen, so
+          the whole order is reachable from a card that only shows three of
+          its lines. Not wired up inside the detail screen itself, where it
+          would reopen the screen you are already on. */}
+      <TouchableOpacity
+        style={styles.cardHeader}
+        activeOpacity={expanded ? 1 : 0.7}
+        disabled={expanded}
+        onPress={() =>
+          setActiveSession({ tableNumber: order.tableNumber, orders: [order] })
+        }
+      >
         <View>
           <View style={styles.tableBadge}>
             <Text style={styles.tableBadgeText}>Table {order.tableNumber}</Text>
@@ -233,7 +400,7 @@ const OrderManager = () => {
             {order.paymentStatus === "Paid" ? "✅ Paid" : "⏳ Pending"}
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* Order Items */}
       <View style={styles.cardBody}>
@@ -241,9 +408,11 @@ const OrderManager = () => {
           <View key={idx} style={styles.itemRow}>
             <View style={styles.itemInfo}>
               <Text style={styles.itemQty}>{item.quantity}x</Text>
-              <Text style={styles.itemName}>{item.name}</Text>
+              <Text style={styles.itemName} numberOfLines={2}>
+                {item.name}
+              </Text>
             </View>
-            <Text style={styles.itemPrice}>₹{item.price * item.quantity}</Text>
+            <Text style={styles.itemPrice}>₹{formatMoney(item.price * item.quantity)}</Text>
           </View>
         ))}
       </View>
@@ -254,10 +423,11 @@ const OrderManager = () => {
           <Text style={styles.totalLabel}>Total</Text>
           <View style={styles.totalValueContainer}>
             <IndianRupee size={18} color="#15803d" />
-            <Text style={styles.totalAmount}>{order.totalPrice}</Text>
+            <Text style={styles.totalAmount}>{formatMoney(order.totalPrice)}</Text>
           </View>
         </View>
 
+        {canUpdateStatus && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -277,7 +447,7 @@ const OrderManager = () => {
               </TouchableOpacity>
             );
           })}
-          {order.status !== "Cancelled" && order.status !== "Completed" && (
+          {canCancel && order.status !== "Cancelled" && order.status !== "Completed" && (
             <TouchableOpacity
               onPress={() => requestCancel(order._id)}
               style={[styles.actionBtn, styles.btnCancel]}
@@ -287,14 +457,50 @@ const OrderManager = () => {
             </TouchableOpacity>
           )}
         </ScrollView>
+        )}
       </View>
     </View>
   );
 
-  const renderSessionGroupCard = (tableOrders: any[], index: number) => {
+  const renderSessionGroupCard = (tableOrders: any[], index: number, mode: "list" | "grid") => {
     const displayTableNumber = tableOrders[0].tableNumber || "N/A";
     const grandTotal = tableOrders.reduce((sum, o) => sum + o.totalPrice, 0);
     const orderCount = tableOrders.length;
+
+    // LIST: the same slim shape as a single order, so a session does not
+    // break the rhythm of the column. The explanatory paragraph is dropped -
+    // it says the same thing every time, and "2 batches" already says it.
+    if (mode === "list") {
+      return (
+        <TouchableOpacity
+          key={`session-group-${index}`}
+          style={styles.row}
+          activeOpacity={0.8}
+          onPress={() => setActiveSession({ tableNumber: displayTableNumber, orders: tableOrders })}
+        >
+          <View style={[styles.rowAccent, { backgroundColor: "#ea580c" }]} />
+          <View style={styles.rowBody}>
+            <View style={styles.rowTop}>
+              <View style={styles.rowTableBadge}>
+                <Text style={styles.rowTableBadgeText}>T{displayTableNumber}</Text>
+              </View>
+              <Text style={styles.rowCustomer} numberOfLines={1}>
+                Combined session
+              </Text>
+              <Text style={styles.rowTotal}>₹{formatMoney(grandTotal)}</Text>
+            </View>
+
+            <View style={styles.rowSessionMetaRow}>
+              <Layers size={11} color="#c2410c" />
+              <Text style={styles.rowMeta}>
+                {orderCount} batches · tap to review
+              </Text>
+              <ChevronRight size={15} color="#9ca3af" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    }
 
     return (
       <View key={`session-group-${index}`} style={styles.sessionCard}>
@@ -305,7 +511,9 @@ const OrderManager = () => {
             </View>
             <View style={styles.sessionBatchBadge}>
               <Layers size={11} color="#c2410c" />
-              <Text style={styles.sessionBatchBadgeText}>{orderCount} BATCHES</Text>
+              <Text style={styles.sessionBatchBadgeText} numberOfLines={1}>
+                {orderCount} BATCHES
+              </Text>
             </View>
           </View>
           <Text style={styles.sessionCardTitle}>Combined QR Session</Text>
@@ -318,7 +526,9 @@ const OrderManager = () => {
           </Text>
           <View style={styles.sessionTotalRow}>
             <Text style={styles.sessionTotalLabel}>Aggregate Total</Text>
-            <Text style={styles.sessionTotalValue}>₹{grandTotal}</Text>
+            <Text style={styles.sessionTotalValue} numberOfLines={1} adjustsFontSizeToFit>
+              ₹{formatMoney(grandTotal)}
+            </Text>
           </View>
         </View>
 
@@ -326,7 +536,9 @@ const OrderManager = () => {
           style={styles.sessionReviewBtn}
           onPress={() => setActiveSession({ tableNumber: displayTableNumber, orders: tableOrders })}
         >
-          <Text style={styles.sessionReviewBtnText}>Review All Batches</Text>
+          <Text style={styles.sessionReviewBtnText} numberOfLines={1}>
+            Review batches
+          </Text>
           <ChevronRight size={18} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -379,7 +591,7 @@ const OrderManager = () => {
         onConfirm={confirmCancel}
         onCancel={() => setCancelTarget(null)}
       >
-        <TextInput
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
           style={styles.reasonInput}
           placeholder="Reason (optional)"
           placeholderTextColor="#9ca3af"
@@ -479,17 +691,17 @@ const OrderManager = () => {
         // "Changing numColumns on the fly is not supported". Keying on the
         // mode forces a fresh list instead, which is the documented approach.
         key={viewMode}
-        numColumns={viewMode === "grid" ? 2 : 1}
-        columnWrapperStyle={viewMode === "grid" ? styles.gridColumn : undefined}
-        data={groupedVisibleOrders}
+        data={renderedOrders}
         keyExtractor={(group: any[]) => group[0]?.tableSessionId || group[0]?._id}
         renderItem={({ item: tableOrders, index }: { item: any[]; index: number }) => (
           // In grid mode each cell must be allowed to shrink to half the row,
           // otherwise the cards keep their intrinsic width and overflow.
-          <View style={viewMode === "grid" ? styles.gridCell : undefined}>
+          <View>
             {tableOrders.length === 1
-              ? renderOrderCard(tableOrders[0])
-              : renderSessionGroupCard(tableOrders, index)}
+              ? viewMode === "grid"
+                ? renderOrderCard(tableOrders[0])
+                : renderOrderRow(tableOrders[0])
+              : renderSessionGroupCard(tableOrders, index, viewMode)}
           </View>
         )}
         style={styles.list}
@@ -519,6 +731,20 @@ const OrderManager = () => {
         maxToRenderPerBatch={8}
         windowSize={11}
         removeClippedSubviews
+        onEndReached={() => setVisibleCount((n) => n + ORDER_PAGE_SIZE)}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          groupedVisibleOrders.length > 0 ? (
+            <LoadMoreButton
+              onPress={() => setVisibleCount((n) => n + ORDER_PAGE_SIZE)}
+              hasMore={hasMoreOrders}
+              shown={renderedOrders.length}
+              total={groupedVisibleOrders.length}
+              showEndMarker={groupedVisibleOrders.length > 8}
+              endLabel="No more orders"
+            />
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={styles.emptyIconRing}>
@@ -553,15 +779,21 @@ const OrderManager = () => {
           <View style={styles.modalHeader}>
             <View>
               <Text style={styles.modalTitle}>Table {activeSession?.tableNumber}</Text>
-              <Text style={styles.modalSubtitle}>Live Session Split View - all batches from this visit</Text>
+              <Text style={styles.modalSubtitle}>
+                {(activeSession?.orders.length || 0) > 1
+                  ? `All ${activeSession?.orders.length} batches from this visit`
+                  : activeSession?.orders[0]?.customerName
+                    ? `Order from ${activeSession.orders[0].customerName}`
+                    : "Order detail"}
+              </Text>
             </View>
             <TouchableOpacity onPress={() => setActiveSession(null)} style={styles.modalCloseBtn}>
               <XCircle size={24} color="#6b7280" />
             </TouchableOpacity>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
-            <View style={styles.grid}>
-              {activeSession?.orders.map((order) => renderOrderCard(order))}
+            <View style={styles.modalCardStack}>
+              {activeSession?.orders.map((order) => renderOrderCard(order, true))}
             </View>
           </ScrollView>
         </View>
@@ -601,8 +833,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
   viewToggleBtnActive: { backgroundColor: "#ffedd5" },
-  gridColumn: { gap: 12 },
-  gridCell: { flex: 1 },
   filterRow: {
     alignItems: "center",
     paddingHorizontal: 16,
@@ -693,7 +923,52 @@ const styles = StyleSheet.create({
   },
   emptyActionText: { fontSize: 13, fontWeight: "800", color: "#ea580c" },
   grid: { gap: 16 },
-  card: { backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  // Flat, not raised. A drop shadow on every row turned the list into a stack
+  // of floating tiles; a plain border reads as a list.
+  card: { backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", overflow: "hidden" },
+  cardAccent: { position: "absolute", left: 0, top: 0, bottom: 0, width: 4, zIndex: 1 },
+
+  // LIST row. Deliberately flat and tight: the point of list view is to see
+  // many orders at once, so nothing here has a shadow, a big pad, or a label
+  // where an icon will do.
+  row: {
+    flexDirection: "row",
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    overflow: "hidden",
+  },
+  rowAccent: { width: 4 },
+  rowBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rowTableBadge: {
+    backgroundColor: "#ffedd5",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  rowTableBadgeText: { color: "#c2410c", fontSize: 11, fontWeight: "800" },
+  // flex so a long name truncates instead of shoving the total off the row.
+  rowCustomer: { flex: 1, fontSize: 15, fontWeight: "800", color: "#1f2937" },
+  rowTotal: { fontSize: 15, fontWeight: "900", color: "#15803d" },
+  rowMeta: { fontSize: 11, fontWeight: "600", color: "#9ca3af" },
+  rowSessionMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  // flexGrow 0 keeps the strip its own height inside the row's column.
+  rowActionsScroll: { flexGrow: 0, flexShrink: 0 },
+  rowActions: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2 },
+  // 36pt square: comfortably tappable without labels, and seven of them fit
+  // in one scrollable strip.
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  iconBtnInactive: { backgroundColor: "#f9fafb", borderColor: "#e5e7eb" },
+  iconBtnCancel: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#f9fafb", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   tableBadge: { backgroundColor: "#ffedd5", alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginBottom: 6 },
   tableBadgeText: { color: "#c2410c", fontSize: 12, fontWeight: "bold" },
@@ -724,7 +999,7 @@ const styles = StyleSheet.create({
   // Combined QR Session group card
   sessionCard: { backgroundColor: "#fff7ed", borderRadius: 16, borderWidth: 1, borderColor: "#fed7aa", overflow: "hidden" },
   sessionCardHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#ffedd5", backgroundColor: "#ffedd5" },
-  sessionBadgeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  sessionBadgeRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 6 },
   sessionTableBadge: { backgroundColor: "#ea580c", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   sessionTableBadgeText: { color: "#fff", fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
   sessionBatchBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fed7aa", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
@@ -733,14 +1008,15 @@ const styles = StyleSheet.create({
   sessionCardBody: { padding: 16 },
   sessionCardDesc: { fontSize: 13, color: "#57534e", lineHeight: 19, marginBottom: 14 },
   sessionCardDescBold: { color: "#ea580c", fontWeight: "bold" },
-  sessionTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#ffffff", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#ffedd5" },
+  sessionTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4, backgroundColor: "#ffffff", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#ffedd5" },
   sessionTotalLabel: { fontSize: 11, fontWeight: "bold", color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 },
-  sessionTotalValue: { fontSize: 18, fontWeight: "900", color: "#16a34a" },
+  sessionTotalValue: { flexShrink: 1, fontSize: 18, fontWeight: "900", color: "#16a34a" },
   sessionReviewBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#ea580c", paddingVertical: 14, margin: 16, marginTop: 0, borderRadius: 12 },
   sessionReviewBtnText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
 
   // Review-all-batches modal
   modalContainer: { flex: 1, backgroundColor: "#f3f4f6" },
+  modalCardStack: { padding: 16, gap: 16 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 20, paddingTop: 50, backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
   modalTitle: { fontSize: 22, fontWeight: "900", color: "#1f2937" },
   modalSubtitle: { fontSize: 12, color: "#9ca3af", fontWeight: "600", marginTop: 4, maxWidth: 260 },

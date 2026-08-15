@@ -26,17 +26,24 @@ interface MenuItemCardProps {
   onEdit: (item: MenuItem) => void;
   onDelete: (id: string) => void;
   onToggleAvailable: (id: string, newStatus: boolean) => void;
+  // Hidden rather than disabled: a greyed-out delete on every row is noise on
+  // a screen a waiter uses all shift. These are the server's rules mirrored
+  // for the UI - the routes enforce them regardless of what is drawn here.
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 interface CustomToggleProps {
   value: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }
 
-const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
+const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle, disabled }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   const toggle = () => {
+    if (disabled) return;
     Animated.timing(anim, {
       toValue: value ? 0 : 1,
       duration: 200,
@@ -57,7 +64,7 @@ const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
   });
 
   return (
-    <Pressable onPress={toggle}>
+    <Pressable onPress={toggle} disabled={disabled} style={disabled && styles.toggleDisabled}>
       <Animated.View style={[styles.toggleTrack, { backgroundColor }]}>
         <Animated.View style={[styles.toggleThumb, { transform: [{ translateX }] }]} />
       </Animated.View>
@@ -70,6 +77,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
   onEdit,
   onDelete,
   onToggleAvailable,
+  canEdit = true,
+  canDelete = true,
 }) => {
   return (
     <View style={[styles.card, !item.available && styles.cardUnavailable]}>
@@ -98,20 +107,29 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
 
         <View style={styles.footer}>
           <View style={styles.toggleRow}>
+            {/* Availability is an edit, so it follows manage_menu too - it
+                writes to the same record a price change does. */}
             <CustomToggle
               value={item.available}
-              onToggle={() => onToggleAvailable(item._id, !item.available)}
+              onToggle={() =>
+                canEdit && onToggleAvailable(item._id, !item.available)
+              }
+              disabled={!canEdit}
             />
             <Text style={styles.availText}>{item.available ? 'Available' : 'Unavailable'}</Text>
           </View>
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity onPress={() => onEdit(item)} style={styles.iconBtn}>
-              <Pencil size={15} color="#4b5563" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => onDelete(item._id)} style={[styles.iconBtn, styles.iconBtnDanger]}>
-              <Trash2 size={15} color="#ef4444" />
-            </TouchableOpacity>
+            {canEdit && (
+              <TouchableOpacity onPress={() => onEdit(item)} style={styles.iconBtn}>
+                <Pencil size={15} color="#4b5563" />
+              </TouchableOpacity>
+            )}
+            {canDelete && (
+              <TouchableOpacity onPress={() => onDelete(item._id)} style={[styles.iconBtn, styles.iconBtnDanger]}>
+                <Trash2 size={15} color="#ef4444" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -212,6 +230,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6b7280',
   },
+  toggleDisabled: { opacity: 0.45 },
   toggleTrack: {
     width: 36,
     height: 20,

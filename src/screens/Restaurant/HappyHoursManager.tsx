@@ -29,7 +29,7 @@ import {
 } from "lucide-react-native";
 
 import { getMyOffers, createOffer, updateOffer, updateOfferStatus, deleteOffer } from "../../API/offerApi";
-import { getMyMenu } from "../../API/menuApi";
+import { getFullMenu } from "../../API/menuApi";
 import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
 import type { HeaderAction } from "../../components/Header";
@@ -97,8 +97,12 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
     }
   };
 
+  // The WHOLE menu, not a page of it: `categories` below and the offer form's
+  // item picker are both derived from this, so a paginated 20 would offer a
+  // category list that silently excluded most of the menu - and an offer
+  // scoped to a category nobody could pick.
   const fetchMenu = () =>
-    getMyMenu()
+    getFullMenu()
       .then((res) => setMenuItems(res?.data?.data || []))
       .catch(() => {});
 
@@ -528,7 +532,7 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalScroll}>
             <Text style={styles.fieldLabel}>Offer Name *</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.input}
               placeholder="e.g. Happy Hour, Weekend Special"
               value={form.name}
@@ -558,7 +562,7 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
             </View>
 
             <Text style={styles.fieldLabel}>Discount Value *</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.input}
               placeholder={form.discountType === "percentage" ? "20" : "50"}
               keyboardType="numeric"
@@ -629,7 +633,7 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
             <View style={styles.timeRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.timeLabel}>Start (HH:MM)</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   placeholder="14:00"
                   value={form.schedule.startTime}
@@ -638,7 +642,7 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.timeLabel}>End (HH:MM)</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   placeholder="17:00"
                   value={form.schedule.endTime}

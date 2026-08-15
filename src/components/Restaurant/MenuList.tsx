@@ -11,6 +11,7 @@ import { UtensilsCrossed, Plus, Layers } from 'lucide-react-native';
 // Import the MenuItem interface we created in MenuItemCard
 import MenuItemCard, { MenuItem } from './MenuItemCard';
 import { MenuListSkeleton } from '../Skeleton';
+import LoadMoreButton from '../LoadMoreButton';
 
 // Define exactly what props this component expects
 interface MenuListProps {
@@ -24,6 +25,17 @@ interface MenuListProps {
   // a permanent toolbar competing with them.
   onAddItem?: () => void;
   onBulkAdd?: () => void;
+  // Infinite scroll. The owner menu is served a page at a time, so the list
+  // asks for the next one as it nears the bottom rather than the screen
+  // showing only the first 20 dishes of a 100-dish menu.
+  onEndReached?: () => void;
+  loadingMore?: boolean;
+  hasMore?: boolean;
+  // The whole menu size from the server, so the footer can say "showing 20 of
+  // 100" rather than leaving the length of the list a mystery.
+  total?: number;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 const MenuList: React.FC<MenuListProps> = ({
@@ -34,6 +46,12 @@ const MenuList: React.FC<MenuListProps> = ({
   onToggleAvailable,
   onAddItem,
   onBulkAdd,
+  onEndReached,
+  loadingMore,
+  hasMore,
+  total,
+  canEdit = true,
+  canDelete = true,
 }) => {
   if (loading) {
     return (
@@ -60,7 +78,7 @@ const MenuList: React.FC<MenuListProps> = ({
         {/* Directing people to controls elsewhere ("use the + in the header")
             is what this replaces: an empty screen should carry its own way
             out rather than describing one. */}
-        <View style={styles.emptyActions}>
+        {canEdit && <View style={styles.emptyActions}>
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={onAddItem}
@@ -79,7 +97,7 @@ const MenuList: React.FC<MenuListProps> = ({
             <Layers size={15} color="#ea580c" />
             <Text style={styles.secondaryBtnText}>Bulk add</Text>
           </TouchableOpacity>
-        </View>
+        </View>}
       </View>
     );
   }
@@ -95,6 +113,8 @@ const MenuList: React.FC<MenuListProps> = ({
           onEdit={onEdit}
           onDelete={onDelete}
           onToggleAvailable={onToggleAvailable}
+          canEdit={canEdit}
+          canDelete={canDelete}
         />
       )}
       contentContainerStyle={styles.listContent}
@@ -105,6 +125,23 @@ const MenuList: React.FC<MenuListProps> = ({
       maxToRenderPerBatch={8}
       windowSize={11}
       removeClippedSubviews
+      onEndReached={onEndReached}
+      // Fires a page early rather than at the very bottom, so the next batch
+      // is usually already there by the time the last card scrolls past.
+      onEndReachedThreshold={0.5}
+      ListFooterComponent={
+        <LoadMoreButton
+          onPress={onEndReached || (() => {})}
+          loading={loadingMore}
+          hasMore={!!hasMore}
+          shown={items.length}
+          total={total}
+          // Only worth saying once the list is long enough that someone might
+          // wonder whether more is still loading.
+          showEndMarker={items.length > 8}
+          endLabel="End of menu"
+        />
+      }
     />
   );
 };

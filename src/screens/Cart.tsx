@@ -387,7 +387,7 @@ const Cart = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}><Hash size={14} color="#9ca3af" /> Table Number</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={[styles.input, tableLocked && styles.inputLocked]}
               value={tableNumber}
               onChangeText={tableLocked ? undefined : setTableNumber}
@@ -402,7 +402,7 @@ const Cart = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}><User size={14} color="#9ca3af" /> Customer Name</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.input}
               value={customerName}
               onChangeText={setCustomerName}

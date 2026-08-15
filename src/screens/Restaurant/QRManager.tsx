@@ -294,7 +294,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
       <View style={styles.controlCard}>
         <View style={styles.inputWrapper}>
           <Text style={styles.label}>Generate up to Table #</Text>
-          <TextInput
+          <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
             style={styles.input}
             keyboardType="number-pad"
             value={tableCount}
@@ -313,7 +313,7 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
       <View style={styles.controlCard}>
         <View style={styles.inputWrapper}>
           <Text style={styles.label}>Or one specific table</Text>
-          <TextInput
+          <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
             style={styles.input}
             keyboardType="number-pad"
             placeholder="e.g. 12"

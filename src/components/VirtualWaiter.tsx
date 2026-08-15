@@ -220,7 +220,7 @@ const VirtualWaiter = ({ restaurantId, menuItems = [] }: VirtualWaiterProps) => 
             </ScrollView>
 
             <View style={styles.inputBar}>
-              <TextInput
+              <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                 style={styles.input}
                 value={input}
                 onChangeText={setInput}

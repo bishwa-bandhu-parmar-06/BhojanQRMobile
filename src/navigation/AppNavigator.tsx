@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { useSelector } from 'react-redux';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import Header from '../components/Header';
@@ -91,7 +92,7 @@ const MainNavigator = () => {
 const AppNavigator = ({ onReady }: AppNavigatorProps) => {
   return (
     
-    <NavigationContainer linking={linking} onReady={onReady}>
+    <NavigationContainer ref={navigationRef} linking={linking} onReady={onReady}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
 
         {/* Main App (includes the Header) */}

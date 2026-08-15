@@ -390,7 +390,7 @@ const GuestMenu = () => {
           />
           <View style={styles.priceFilterRow}>
             <Text style={styles.filterLabel}>MAX PRICE (₹)</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.priceInput}
               keyboardType="number-pad"
               value={priceRange}

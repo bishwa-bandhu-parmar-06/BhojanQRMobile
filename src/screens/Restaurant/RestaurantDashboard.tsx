@@ -10,10 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import { useNavigation } from "@react-navigation/native";
+import Toast from "react-native-toast-message";
 import { useDispatch, useSelector } from "react-redux";
 import { logout, updateUser } from "../../Features/AuthSlice";
 import { getRestaurantProfile, logoutRestaurant } from "../../API/restaurentApi";
-import { logoutStaff } from "../../API/staffApi";
+import { logoutStaff, getMyAccess } from "../../API/staffApi";
 import { canAccessTab, getDefaultTab } from "../../constants/dashboardTabs";
 import { useThemeColors, useThemedStyles, type ThemeColors } from "../../theme";
 import { useTranslation } from "../../i18n";
@@ -25,7 +26,7 @@ import Header, { type HeaderAction } from "../../components/Header";
 
 // Icons for our new Mobile Tab Navigation
 import {
-  LayoutDashboard,
+  Home,
   ClipboardList,
   BookOpen,
   QrCode,
@@ -71,7 +72,7 @@ import OrderHistoryManager from "./OrderHistoryManager";
 // old horizontal tab strip, so permission gating (canAccessTab) and the
 // landing-tab logic (getDefaultTab) keep working untouched.
 const BOTTOM_TABS = [
-  { id: "overview", label: "tabs.home", icon: LayoutDashboard },
+  { id: "overview", label: "tabs.home", icon: Home },
   { id: "orders", label: "tabs.orders", icon: ClipboardList },
   { id: "active_tables", label: "tabs.tables", icon: LayoutGrid },
   { id: "menu", label: "tabs.menu", icon: BookOpen },
@@ -283,6 +284,52 @@ const RestaurantDashboard = () => {
   const staffPermissions: Permission[] = isOwner ? [] : user?.permissions || [];
   const can = (...perms: Permission[]) => perms.some((p) => staffPermissions.includes(p));
 
+  // Re-reads this staff member's permissions from the server.
+  //
+  // The session stores whatever the login response contained, so an owner who
+  // revokes a right changes nothing on that person's phone until they sign
+  // out - they keep seeing the section AND can keep using it. Syncing on
+  // mount and on every refresh closes that to one refresh cycle.
+  //
+  // Owners are skipped: they hold every permission implicitly and have no
+  // Staff record to read.
+  const syncStaffAccess = useCallback(async () => {
+    if (user?.role !== "staff") return;
+    try {
+      const res = await getMyAccess();
+      const access = res?.data?.data;
+      if (!access) return;
+
+      // Disabled while they were signed in - drop the session rather than
+      // leave them on a dashboard where every request will 403.
+      if (access.isActive === false) {
+        Toast.show({
+          type: "error",
+          text1: "Access disabled",
+          text2: "Your account has been turned off by the owner",
+        });
+        dispatch(logout());
+        return;
+      }
+
+      dispatch(
+        updateUser({
+          permissions: access.permissions || [],
+          staffRole: access.staffRole,
+        }),
+      );
+    } catch {
+      // Offline or a transient failure: keep the cached permissions rather
+      // than locking someone out of their own shift. The server still
+      // enforces the real rules on every request, so a stale UI cannot
+      // actually do anything it should not.
+    }
+  }, [user?.role, dispatch]);
+
+  useEffect(() => {
+    syncStaffAccess();
+  }, [syncStaffAccess]);
+
   const fetchProfile = async () => {
     if (!isOwner) {
       // Staff don't have their own restaurant profile. The login response
@@ -344,6 +391,7 @@ const RestaurantDashboard = () => {
   // Intentionally mount-stable - see Initial Load effect above.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    await syncStaffAccess();
     await fetchProfile();
     setRefreshKey(prev => prev + 1);
     setRefreshing(false);
@@ -412,7 +460,10 @@ const RestaurantDashboard = () => {
   // there is no state in which either belongs on the More page only. Bare
   // icons rather than labelled pills because the app bar's centred title runs
   // across the full width; a pill on the right would sit on top of it.
-  if (activeTab === "menu" && canAccessTab("menu", { isOwner, can })) {
+  // Gated on manage_menu specifically, not on reaching the Menu tab: that tab
+  // also opens for delete_menu, and someone who may only remove dishes should
+  // not be offered "Add item" and "Bulk add".
+  if (activeTab === "menu" && (isOwner || can("manage_menu"))) {
     headerActions.push(
       {
         key: "add-menu-item",
@@ -610,6 +661,18 @@ const RestaurantDashboard = () => {
         <View style={styles.mainContent}>
           <ActiveTablesManager key={refreshKey} />
         </View>
+      ) : activeTab === "order_history" && canAccessTab("order_history", { isOwner, can }) ? (
+        <View style={styles.mainContent}>
+          <OrderHistoryManager key={refreshKey} onHeaderActions={handleSectionActions} />
+        </View>
+      ) : activeTab === "support" && canAccessTab("support", { isOwner, can }) ? (
+        <View style={styles.mainContent}>
+          <SupportTicketManager
+            key={refreshKey}
+            onHeaderActions={handleSectionActions}
+            onSubScreenChange={handleSubScreenChange}
+          />
+        </View>
       ) : (
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -649,7 +712,7 @@ const RestaurantDashboard = () => {
                   sections above, these are not covered by their own
                   TAB_ACCESS rule, so without this a waiter would be offered
                   an "Add Menu Item" row that the Menu tab itself denies. */}
-              {canAccessTab("menu", { isOwner, can }) &&
+              {(isOwner || can("manage_menu")) &&
                 MORE_MENU_ACTIONS.map(({ id, label, icon: Icon, hint }) => (
                   <TouchableOpacity
                     key={id}
@@ -700,16 +763,6 @@ const RestaurantDashboard = () => {
           {activeTab === "qr" && canAccessTab("qr", { isOwner, can }) && <QRManager restaurant={restaurant} key={refreshKey} />}
           {activeTab === "notifications" && canAccessTab("notifications", { isOwner, can }) && (
             <NotificationManager key={refreshKey} onHeaderActions={handleSectionActions} />
-          )}
-          {activeTab === "order_history" && canAccessTab("order_history", { isOwner, can }) && (
-            <OrderHistoryManager key={refreshKey} onHeaderActions={handleSectionActions} />
-          )}
-          {activeTab === "support" && canAccessTab("support", { isOwner, can }) && (
-            <SupportTicketManager
-              key={refreshKey}
-              onHeaderActions={handleSectionActions}
-              onSubScreenChange={handleSubScreenChange}
-            />
           )}
           {/* Profile Details now owns everything about the RESTAURANT -
               basic details, locations, logo, login email, password and

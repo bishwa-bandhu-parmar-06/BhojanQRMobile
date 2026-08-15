@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  ScrollView,
+  Modal,
 } from "react-native";
 import Toast from "react-native-toast-message";
 import {
@@ -13,12 +15,13 @@ import {
   RefreshCw,
   IndianRupee,
   ShoppingBag,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
+  XCircle,
 } from "lucide-react-native";
 
 import { getOrderHistory } from "../../API/orderApi";
-import { getStatusMeta } from "../../constants/orderStatus";
+import { getStatusMeta, groupBySession } from "../../constants/orderStatus";
+import { formatMoney } from "../../utils/money";
 import { SkeletonBlock } from "../../components/Skeleton";
 import type { HeaderAction } from "../../components/Header";
 import { useThemeColors, useThemedStyles, type ThemeColors } from "../../theme";
@@ -70,7 +73,11 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // The row that has been opened into the full detail screen. History used
+  // to expand inline, which meant a combined session's four batches unfolded
+  // inside a list row and pushed everything below it off screen. It opens the
+  // same way the live board does now.
+  const [detail, setDetail] = useState<any>(null);
 
   const pageRef = useRef(1);
 
@@ -134,18 +141,50 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
   // as "what happened when", so the date is the spine of the list; without it
   // every card would have to repeat a full timestamp to be readable.
   const rows = useMemo(() => {
+    // Repeat orders from one visit stay together here exactly as they do on
+    // the live board - the server releases a session as a unit, so history
+    // must present it as one, not as loose batches scattered by timestamp.
+    const groups = groupBySession(orders).map((group) => {
+      if (group.length === 1) return group[0];
+
+      const latest = group.reduce((newest: any, o: any) =>
+        new Date(o.statusUpdatedAt || o.updatedAt || 0).getTime() >
+        new Date(newest.statusUpdatedAt || newest.updatedAt || 0).getTime()
+          ? o
+          : newest,
+      );
+
+      return {
+        _id: `session-${group[0].tableSessionId || group[0]._id}`,
+        __session: true,
+        orders: group,
+        tableNumber: group[0].tableNumber,
+        customerName: group[0].customerName,
+        statusUpdatedAt: latest.statusUpdatedAt || latest.updatedAt,
+        // A session is "cancelled" only if nothing in it survived; one
+        // cancelled batch beside three served ones is still a served table.
+        status: group.every((o: any) => o.status === "Cancelled")
+          ? "Cancelled"
+          : "Completed",
+        totalPrice: group.reduce((sum: number, o: any) => sum + (o.totalPrice || 0), 0),
+        items: group.flatMap((o: any) => o.items || []),
+      };
+    });
+
     const out: any[] = [];
     let lastDay = "";
-    orders.forEach((order) => {
-      const day = formatDayKey(order.statusUpdatedAt || order.updatedAt);
+    groups.forEach((entry: any) => {
+      const day = formatDayKey(entry.statusUpdatedAt || entry.updatedAt);
       if (day && day !== lastDay) {
         out.push({ _id: `day-${day}`, __day: day });
         lastDay = day;
       }
-      out.push(order);
+      out.push(entry);
     });
     return out;
   }, [orders]);
+
+  const detailBatches = detail?.__session ? detail.orders : detail ? [detail] : [];
 
   if (loading) {
     return (
@@ -214,7 +253,6 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
             return <Text style={styles.dayHeading}>{item.__day}</Text>;
           }
 
-          const isOpen = expandedId === item._id;
           const items = item.items || [];
           const itemCount = items.reduce(
             (sum: number, it: any) => sum + (it.quantity || 0),
@@ -232,7 +270,7 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
             <TouchableOpacity
               style={styles.card}
               activeOpacity={0.8}
-              onPress={() => setExpandedId(isOpen ? null : item._id)}
+              onPress={() => setDetail(item)}
             >
               <View style={styles.cardTop}>
                 <View style={styles.tableChip}>
@@ -240,7 +278,7 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
                 </View>
                 <View style={styles.cardHeadText}>
                   <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.customerName || "Guest"}
+                    {item.__session ? "Combined session" : item.customerName || "Guest"}
                   </Text>
                   <Text style={styles.cardMeta}>
                     {formatDateTime(item.statusUpdatedAt || item.updatedAt)}
@@ -252,14 +290,10 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
                     {/* Struck through when cancelled: the number is still
                         worth seeing, but it is not money that was taken. */}
                     <Text style={[styles.amount, isCancelled && styles.amountVoid]}>
-                      {item.totalPrice}
+                      {formatMoney(item.totalPrice)}
                     </Text>
                   </View>
-                  {isOpen ? (
-                    <ChevronUp size={15} color={c.textFaint} />
-                  ) : (
-                    <ChevronDown size={15} color={c.textFaint} />
-                  )}
+                  <ChevronRight size={15} color={c.textFaint} />
                 </View>
               </View>
 
@@ -272,6 +306,7 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
                 </View>
                 <ShoppingBag size={12} color={c.textFaint} />
                 <Text style={styles.cardFootText}>
+                  {item.__session ? `${item.orders.length} batches · ` : ""}
                   {itemCount} item{itemCount === 1 ? "" : "s"}
                 </Text>
               </View>
@@ -285,26 +320,101 @@ const OrderHistoryManager = ({ onHeaderActions }: OrderHistoryManagerProps) => {
                 </Text>
               )}
 
-              {/* Collapsed by default: a manager scanning history wants the
-                  table, the total and the time. The line items matter only
-                  once one row is worth querying. */}
-              {isOpen && (
-                <View style={styles.itemList}>
-                  {items.map((it: any, index: number) => (
-                    <View key={`${item._id}-${index}`} style={styles.itemRow}>
-                      <Text style={styles.itemQty}>{it.quantity}×</Text>
-                      <Text style={styles.itemName} numberOfLines={1}>
-                        {it.name}
-                      </Text>
-                      <Text style={styles.itemPrice}>₹{it.price}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
             </TouchableOpacity>
           );
         }}
       />
+
+      {/* Full-screen detail, same shape as the live board's - a finished
+          order is read here, not worked on, so it carries no status
+          controls. Every batch is shown in full: this is the one place the
+          whole visit can be reconstructed. */}
+      <Modal visible={!!detail} animationType="slide" onRequestClose={() => setDetail(null)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderText}>
+              <Text style={styles.modalTitle}>Table {detail?.tableNumber}</Text>
+              <Text style={styles.modalSubtitle}>
+                {detail?.__session
+                  ? `${detail.orders.length} batches · ${formatDateTime(
+                      detail.statusUpdatedAt || detail.updatedAt,
+                    )}`
+                  : formatDateTime(detail?.statusUpdatedAt || detail?.updatedAt)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setDetail(null)}
+              style={styles.modalCloseBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <XCircle size={24} color={c.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {detailBatches.map((batch: any, batchIndex: number) => {
+              const bMeta = getStatusMeta(batch.status);
+              const BIcon = bMeta.Icon;
+              const bCancelled = batch.status === "Cancelled";
+
+              return (
+                <View key={batch._id || batchIndex} style={styles.detailCard}>
+                  <View style={styles.detailCardTop}>
+                    <View style={styles.detailHeadText}>
+                      <Text style={styles.detailCustomer} numberOfLines={1}>
+                        {batch.customerName || "Guest"}
+                      </Text>
+                      <Text style={styles.cardMeta}>
+                        {formatDateTime(batch.statusUpdatedAt || batch.updatedAt)}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusChip, { backgroundColor: `${bMeta.color}1a` }]}>
+                      <BIcon size={11} color={bMeta.color} />
+                      <Text style={[styles.statusChipText, { color: bMeta.color }]}>
+                        {bMeta.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.itemList}>
+                    {(batch.items || []).map((it: any, index: number) => (
+                      <View key={`${batch._id}-${index}`} style={styles.itemRow}>
+                        <Text style={styles.itemQty}>{it.quantity}×</Text>
+                        <Text style={styles.itemName} numberOfLines={2}>
+                          {it.name}
+                        </Text>
+                        <Text style={styles.itemPrice}>
+                          ₹{formatMoney((it.price || 0) * (it.quantity || 0))}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {bCancelled && !!batch.cancellationReason && (
+                    <Text style={styles.reason}>{batch.cancellationReason}</Text>
+                  )}
+
+                  <View style={styles.detailTotalRow}>
+                    <Text style={styles.detailTotalLabel}>Batch total</Text>
+                    <Text style={[styles.detailTotalValue, bCancelled && styles.amountVoid]}>
+                      ₹{formatMoney(batch.totalPrice)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Only meaningful when there is more than one batch to add up. */}
+            {detail?.__session && (
+              <View style={styles.grandTotalRow}>
+                <Text style={styles.grandTotalLabel}>Session total</Text>
+                <Text style={styles.grandTotalValue}>₹{formatMoney(detail.totalPrice)}</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -424,6 +534,72 @@ const makeStyles = (c: ThemeColors) =>
       alignItems: "center",
       justifyContent: "center",
     },
+    // ---- Full-screen detail ----------------------------------------------
+    modalContainer: { flex: 1, backgroundColor: c.bg },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingHorizontal: 20,
+      paddingTop: 50,
+      paddingBottom: 18,
+      backgroundColor: c.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    modalHeaderText: { flex: 1 },
+    modalTitle: { fontSize: 22, fontWeight: "900", color: c.text },
+    modalSubtitle: { fontSize: 12, fontWeight: "600", color: c.textFaint, marginTop: 4 },
+    modalCloseBtn: { padding: 6, borderRadius: 100, backgroundColor: c.surfaceAlt },
+    modalContent: { padding: 16, paddingBottom: 40, gap: 14 },
+
+    detailCard: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: 14,
+    },
+    detailCardTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      marginBottom: 4,
+    },
+    detailHeadText: { flex: 1 },
+    detailCustomer: { fontSize: 15, fontWeight: "800", color: c.text },
+    detailTotalRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 12,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: c.divider,
+    },
+    detailTotalLabel: { fontSize: 12, fontWeight: "700", color: c.textMuted },
+    detailTotalValue: { fontSize: 16, fontWeight: "900", color: c.text },
+    grandTotalRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: 16,
+      borderRadius: 14,
+      backgroundColor: c.primarySoft,
+      borderWidth: 1,
+      borderColor: c.primarySoftBorder,
+    },
+    grandTotalLabel: {
+      fontSize: 12,
+      fontWeight: "800",
+      color: c.primary,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    grandTotalValue: { flexShrink: 1, fontSize: 20, fontWeight: "900", color: c.success },
+
     emptyTitle: { fontSize: 18, fontWeight: "800", color: c.text },
     emptySubtitle: {
       fontSize: 13,

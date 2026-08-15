@@ -78,19 +78,19 @@ const AppVersionManager = () => {
         <View style={styles.row}>
           <View style={{ flex: 1, marginRight: 8 }}>
             <Text style={styles.label}>Minimum Version</Text>
-            <TextInput style={styles.input} value={formData.minVersion} onChangeText={(t) => setFormData({ ...formData, minVersion: t })} placeholder="e.g. 1.0.1" />
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} value={formData.minVersion} onChangeText={(t) => setFormData({ ...formData, minVersion: t })} placeholder="e.g. 1.0.1" />
           </View>
           <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={styles.label}>Latest Version</Text>
-            <TextInput style={styles.input} value={formData.latestVersion} onChangeText={(t) => setFormData({ ...formData, latestVersion: t })} placeholder="e.g. 1.0.2" />
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} value={formData.latestVersion} onChangeText={(t) => setFormData({ ...formData, latestVersion: t })} placeholder="e.g. 1.0.2" />
           </View>
         </View>
 
         <Text style={styles.label}>Play Store / Download URL</Text>
-        <TextInput style={styles.input} value={formData.updateUrl} onChangeText={(t) => setFormData({ ...formData, updateUrl: t })} placeholder="https://..." />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} value={formData.updateUrl} onChangeText={(t) => setFormData({ ...formData, updateUrl: t })} placeholder="https://..." />
 
         <Text style={styles.label}>Update Message for Users</Text>
-        <TextInput style={[styles.input, { height: 80, textAlignVertical: 'top' }]} multiline value={formData.message} onChangeText={(t) => setFormData({ ...formData, message: t })} placeholder="Enter message..." />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { height: 80, textAlignVertical: 'top' }]} multiline value={formData.message} onChangeText={(t) => setFormData({ ...formData, message: t })} placeholder="Enter message..." />
 
         <View style={styles.switchRow}>
           <View>

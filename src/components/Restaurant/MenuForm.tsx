@@ -96,12 +96,12 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
 
       <View style={styles.body}>
         <Text style={styles.label}>Item Name *</Text>
-        <TextInput style={styles.input} placeholder="e.g. Paneer Butter Masala" value={formData.name} onChangeText={(t) => setFormData({ ...formData, name: t })} />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="e.g. Paneer Butter Masala" value={formData.name} onChangeText={(t) => setFormData({ ...formData, name: t })} />
 
         <View style={styles.row}>
           <View style={{ flex: 1, marginRight: 8 }}>
             <Text style={styles.label}>Price *</Text>
-            <TextInput style={styles.input} placeholder="0.00" keyboardType="numeric" value={formData.price} onChangeText={(t) => setFormData({ ...formData, price: t })} />
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="0.00" keyboardType="numeric" value={formData.price} onChangeText={(t) => setFormData({ ...formData, price: t })} />
           </View>
           <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={styles.label}>Category *</Text>
@@ -115,7 +115,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
         </View>
 
         <Text style={styles.label}>Description</Text>
-        <TextInput style={[styles.input, { height: 80 }]} multiline placeholder="Briefly describe..." value={formData.description} onChangeText={(t) => setFormData({ ...formData, description: t })} />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { height: 80 }]} multiline placeholder="Briefly describe..." value={formData.description} onChangeText={(t) => setFormData({ ...formData, description: t })} />
 
         <Text style={styles.label}>Item Image {!menuItem && "*"}</Text>
         <TouchableOpacity style={styles.imageArea} onPress={handleImagePick}>

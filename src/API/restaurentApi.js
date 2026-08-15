@@ -58,8 +58,8 @@ export const logoutRestaurant = () => {
   return api.post(`${BASE_URL}/logout`);
 };
 
-export const getDashboardStats = () => {
-  return api.get(`${BASE_URL}/dashboard-stats`);
+export const getDashboardStats = (fresh = false) => {
+  return api.get(`${BASE_URL}/dashboard-stats`, { params: fresh ? { fresh: 1 } : {} });
 };
 
 export const getSavedQRs = () => {

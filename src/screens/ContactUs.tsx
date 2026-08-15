@@ -82,7 +82,7 @@ const ContactUs = () => {
                 <Text style={styles.formTitle}>Send a Message</Text>
 
                 <Text style={styles.fieldLabel}>Name</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   value={formData.name}
                   onChangeText={v => handleChange('name', v)}
@@ -91,7 +91,7 @@ const ContactUs = () => {
                 />
 
                 <Text style={styles.fieldLabel}>Email</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   value={formData.email}
                   onChangeText={v => handleChange('email', v)}
@@ -102,7 +102,7 @@ const ContactUs = () => {
                 />
 
                 <Text style={styles.fieldLabel}>Phone</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   value={formData.mobile}
                   onChangeText={v => handleChange('mobile', v)}
@@ -112,7 +112,7 @@ const ContactUs = () => {
                 />
 
                 <Text style={styles.fieldLabel}>Subject</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   value={formData.subject}
                   onChangeText={v => handleChange('subject', v)}
@@ -121,7 +121,7 @@ const ContactUs = () => {
                 />
 
                 <Text style={styles.fieldLabel}>Message</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={[styles.input, styles.textArea]}
                   value={formData.message}
                   onChangeText={v => handleChange('message', v)}

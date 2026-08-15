@@ -14,12 +14,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import LinearGradient from "react-native-linear-gradient";
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import Toast from "react-native-toast-message";
+import { pick, types } from "@react-native-documents/picker";
 import { useDispatch } from "react-redux";
 
 // Make sure these paths are correct for your React Native project structure
 import { loginSuccess } from "../Features/AuthSlice";
 import { registerRestaurant, loginRestaurant } from "../API/restaurentApi";
 import { setToken } from "../utils/tokenStorage";
+
+// Kept in step with server/config/cloudinary.js. The server rejects anything
+// outside these anyway; duplicating them here is what turns a failed
+// registration into an immediate, specific message at the moment of picking.
+const MAX_DOCUMENT_MB = 2;
+const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MB * 1024 * 1024;
+const DOCUMENT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"];
+const DOCUMENT_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "application/pdf",
+];
 
 const RestaurentAuth = () => {
   const navigation = useNavigation<any>();
@@ -74,12 +88,72 @@ const RestaurentAuth = () => {
   };
 
   const handleFileChange = async () => {
-    // Note for React Native: You will need to install 'react-native-document-picker'
-    Toast.show({
-      type: 'info',
-      text1: 'File Upload',
-      text2: 'Implement react-native-document-picker here.',
-    });
+    try {
+      const [file] = await pick({
+        type: [types.images, types.pdf],
+        // Copies out of the provider's sandbox into a path this app can read.
+        // Without it a file picked from Drive or Downloads yields a content://
+        // URI that FormData cannot open, and the upload fails at submit time -
+        // long after the point where it could be explained.
+        copyTo: "cachesDirectory",
+      } as any);
+
+      if (!file) return;
+
+      const name = file.name || "document";
+      const extension = name.slice(name.lastIndexOf(".")).toLowerCase();
+      const mime = file.type || "";
+
+      // The same allow-list the server enforces (config/cloudinary.js:
+      // DOCUMENT_EXTENSIONS / DOCUMENT_MIME_TYPES). Checked here so a wrong
+      // file is rejected while the picker is still in mind, rather than
+      // failing the whole registration after every other field is filled in.
+      if (
+        !DOCUMENT_EXTENSIONS.includes(extension) ||
+        (mime && !DOCUMENT_MIME_TYPES.includes(mime))
+      ) {
+        Toast.show({
+          type: "error",
+          text1: "Unsupported file type",
+          text2: "Upload a JPG, PNG or PDF",
+        });
+        return;
+      }
+
+      if (typeof file.size === "number" && file.size > MAX_DOCUMENT_BYTES) {
+        Toast.show({
+          type: "error",
+          text1: "File is too large",
+          text2: `Maximum ${MAX_DOCUMENT_MB}MB - this one is ${(file.size / (1024 * 1024)).toFixed(1)}MB`,
+        });
+        return;
+      }
+
+      // fileCopyUri is the readable path produced by copyTo; uri is the
+      // original, which may not be openable.
+      setGovtIdDocument({
+        uri: (file as any).fileCopyUri || file.uri,
+        type: mime || "application/octet-stream",
+        name,
+        size: file.size,
+      });
+
+      Toast.show({ type: "success", text1: "Document attached", text2: name });
+    } catch (error: any) {
+      // Backing out of the picker is not an error worth reporting. The
+      // library signals it either by code or by message depending on
+      // platform, so both are checked.
+      const cancelled =
+        error?.code === "DOCUMENT_PICKER_CANCELED" ||
+        /cancel/i.test(error?.message || "");
+      if (cancelled) return;
+
+      Toast.show({
+        type: "error",
+        text1: "Could not open the file picker",
+        text2: error?.message || "Please try again",
+      });
+    }
   };
 
   const validateForm = () => {
@@ -146,7 +220,15 @@ const RestaurentAuth = () => {
         formData.append("idNumber", restaurantData.idNumber);
 
         if (govtIdDocument) {
-          formData.append("govtIdDocument", govtIdDocument);
+          // Only the three keys RN's FormData understands for a file part.
+          // `size` is kept on state for the label but is not a file field,
+          // and passing extra keys through is how a multipart part ends up
+          // malformed on some Android versions.
+          formData.append("govtIdDocument", {
+            uri: govtIdDocument.uri,
+            type: govtIdDocument.type,
+            name: govtIdDocument.name,
+          } as any);
         }
 
         const response = await registerRestaurant(formData as any);
@@ -258,7 +340,7 @@ const RestaurentAuth = () => {
                   <>
                     <View style={styles.inputWrapper}>
                       <FontAwesome5 name="store" size={16} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput
+                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                         style={styles.textInput}
                         placeholder="Restaurant Name *"
                         placeholderTextColor="#9ca3af"
@@ -269,7 +351,7 @@ const RestaurentAuth = () => {
 
                     <View style={styles.inputWrapper}>
                       <FontAwesome5 name="user" size={16} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput
+                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                         style={styles.textInput}
                         placeholder="Owner Full Name *"
                         placeholderTextColor="#9ca3af"
@@ -280,7 +362,7 @@ const RestaurentAuth = () => {
 
                     <View style={styles.inputWrapper}>
                       <FontAwesome5 name="phone-alt" size={16} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput
+                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                         style={styles.textInput}
                         placeholder="Mobile Number *"
                         placeholderTextColor="#9ca3af"
@@ -310,7 +392,7 @@ const RestaurentAuth = () => {
 
                     <View style={styles.inputWrapper}>
                       <FontAwesome5 name="file-alt" size={16} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput
+                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                         style={styles.textInput}
                         placeholder={`${restaurantData.idType} Number *`}
                         placeholderTextColor="#9ca3af"
@@ -321,11 +403,46 @@ const RestaurentAuth = () => {
 
                     {/* File Upload Button */}
                     <Text style={[styles.inputLabel, { marginTop: 8 }]}>Upload Document (Optional)</Text>
-                    <TouchableOpacity style={styles.uploadButton} onPress={handleFileChange}>
-                      <FontAwesome5 name="cloud-upload-alt" size={20} color="#ea580c" style={{ marginRight: 10 }} />
-                      <Text style={styles.uploadButtonText}>
-                        {govtIdDocument ? govtIdDocument.name || "Document Selected" : "Click to select file (Image/PDF)"}
-                      </Text>
+                    <TouchableOpacity
+                      style={[styles.uploadButton, govtIdDocument && styles.uploadButtonFilled]}
+                      onPress={handleFileChange}
+                      activeOpacity={0.75}
+                    >
+                      <FontAwesome5
+                        name={govtIdDocument ? "file-alt" : "cloud-upload-alt"}
+                        size={20}
+                        color="#ea580c"
+                        style={{ marginRight: 10 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.uploadButtonText} numberOfLines={1}>
+                          {govtIdDocument
+                            ? govtIdDocument.name
+                            : `JPG, PNG or PDF - up to ${MAX_DOCUMENT_MB}MB`}
+                        </Text>
+                        {/* Size shown once attached: the server rejects
+                            anything over the cap, so seeing it here is the
+                            difference between knowing now and finding out
+                            when the form is submitted. */}
+                        {!!govtIdDocument?.size && (
+                          <Text style={styles.uploadButtonMeta}>
+                            {(govtIdDocument.size / 1024).toFixed(0)} KB · tap to replace
+                          </Text>
+                        )}
+                      </View>
+
+                      {/* Optional field, so removing an attachment has to be
+                          possible - otherwise a mis-picked file can only be
+                          swapped, never cleared. */}
+                      {!!govtIdDocument && (
+                        <TouchableOpacity
+                          onPress={() => setGovtIdDocument(null)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          style={styles.uploadClear}
+                        >
+                          <FontAwesome5 name="times" size={14} color="#9ca3af" />
+                        </TouchableOpacity>
+                      )}
                     </TouchableOpacity>
 
                     <View style={styles.divider} />
@@ -334,7 +451,7 @@ const RestaurentAuth = () => {
 
                 <View style={styles.inputWrapper}>
                   <FontAwesome5 name="envelope" size={16} color="#9ca3af" style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                     style={styles.textInput}
                     placeholder="Email Address *"
                     placeholderTextColor="#9ca3af"
@@ -347,7 +464,7 @@ const RestaurentAuth = () => {
 
                 <View style={styles.inputWrapper}>
                   <FontAwesome5 name="lock" size={16} color="#9ca3af" style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                     style={styles.textInput}
                     placeholder="Password *"
                     placeholderTextColor="#9ca3af"
@@ -608,6 +725,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#f9fafb',
   },
+  uploadButtonFilled: { borderStyle: "solid", borderColor: "#fed7aa", backgroundColor: "#fff7ed" },
+  uploadButtonMeta: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
+  uploadClear: { padding: 6 },
   uploadButtonText: {
     fontSize: 14,
     fontWeight: '600',

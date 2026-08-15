@@ -10,6 +10,7 @@ import {
   Modal,
 } from "react-native";
 import Toast from "react-native-toast-message";
+import { useSelector } from "react-redux";
 import { Clock, ChefHat, CheckCircle, Receipt, X, LayoutGrid, User } from "lucide-react-native";
 
 import {
@@ -22,15 +23,17 @@ import {
   ORDER_STATUS_FLOW,
   isActiveOrderStatus,
   getStatusMeta,
-  isArchivedOrder,
+  isArchivedGroup,
   TERMINAL_ORDER_STATUSES,
 } from "../../constants/orderStatus";
 import { useArchiveTick } from "../../hooks/useArchiveTick";
 import BhojanQRLoader from "../../components/BhojanQRLoader";
 import CustomModal from "../../components/CustomModal";
+import LoadMoreButton from "../../components/LoadMoreButton";
 import { SkeletonBlock } from "../../components/Skeleton";
 import SectionError from "../../components/SectionError";
 import { socket } from "../../utils/socket";
+import { formatMoney } from "../../utils/money";
 
 interface OrderItem {
   name: string;
@@ -58,7 +61,22 @@ interface MasterBill {
   mergedItems: { name: string; price: number; quantity: number; subTotal: number }[];
 }
 
+// Table cards rendered up front, and added per "Load more" tap. Like the
+// orders list, /order/active-sessions is unpaginated, so this caps rendering
+// rather than fetching - each card carries its whole order list, so a venue
+// with many live tables rebuilds a lot on every socket event.
+const TABLE_PAGE_SIZE = 20;
+
 const ActiveTablesManager = () => {
+  // Mirrors orderRoutes.js: settling a table needs manage_tables (or the
+  // broader manage_orders), and moving an order along needs manage_orders.
+  const user = useSelector((state: any) => state.auth?.user);
+  const isOwner = user?.role === "restaurant";
+  const perms: string[] = isOwner ? [] : user?.permissions || [];
+  const canUpdateStatus = isOwner || perms.includes("manage_orders");
+  const canSettle =
+    isOwner || perms.includes("manage_tables") || perms.includes("manage_orders");
+
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   // Pull-to-refresh is owned here: this panel renders outside the dashboard's
@@ -85,18 +103,27 @@ const ActiveTablesManager = () => {
     [sessions],
   );
   const now = useArchiveTick(hasPendingArchive);
+  const [visibleCount, setVisibleCount] = useState(TABLE_PAGE_SIZE);
+
+  // A session is kept WHOLE or dropped whole. Filtering archived orders out
+  // of a live session was wrong for the same reason it was wrong on the
+  // orders board: a table with three orders would lose the finished ones and
+  // stop showing what the table had actually ordered. Nothing is removed
+  // from a session; the session leaves once every order in it is done.
   const visibleSessions = useMemo(
-    () =>
-      sessions.map((s) => ({
-        ...s,
-        orders: (s.orders || []).filter((o: any) => !isArchivedOrder(o, now)),
-      })),
+    () => sessions.filter((s) => !isArchivedGroup(s.orders || [], now)),
     [sessions, now],
   );
 
-  const fetchSessions = async () => {
+  const renderedSessions = useMemo(
+    () => visibleSessions.slice(0, visibleCount),
+    [visibleSessions, visibleCount],
+  );
+  const hasMoreSessions = visibleSessions.length > renderedSessions.length;
+
+  const fetchSessions = async (fresh = false) => {
     try {
-      const res = await getActiveSessionsList();
+      const res = await getActiveSessionsList(fresh);
       if (res.data.success) {
         setSessions(res.data.data || []);
         setLoadError(false);
@@ -110,8 +137,8 @@ const ActiveTablesManager = () => {
   };
 
   useEffect(() => {
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 15000);
+    fetchSessions(true);
+    const interval = setInterval(() => fetchSessions(false), 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -132,11 +159,11 @@ const ActiveTablesManager = () => {
     };
   }, [selectedTable]);
 
-  const openTable = async (tableNumber: number | string) => {
+  const openTable = async (tableNumber: number | string, fresh = false) => {
     setSelectedTable(tableNumber);
     setFetchingBill(true);
     try {
-      const res = await getTableMasterBill(tableNumber);
+      const res = await getTableMasterBill(tableNumber, fresh);
       if (res.data.success) {
         setBill(res.data.data);
       }
@@ -163,8 +190,8 @@ const ActiveTablesManager = () => {
       const res = await updateOrderStatus(orderId, { status: newStatus });
       if (res.data.success) {
         Toast.show({ type: "success", text1: `Order marked as ${newStatus}` });
-        fetchSessions();
-        if (selectedTable != null) openTable(selectedTable);
+        fetchSessions(true);
+        if (selectedTable != null) openTable(selectedTable, true);
       }
     } catch (err: any) {
       const msg = err.response?.data?.error || "Failed to update order status";
@@ -245,8 +272,16 @@ const ActiveTablesManager = () => {
            live tables, and the mapped ScrollView built every card up front on
            every socket-driven re-render. */
         <FlatList
-          data={visibleSessions}
+          data={renderedSessions}
           keyExtractor={(session) => session._id}
+          // Two real columns. This used to be a contentContainer with
+          // flexDirection row + flexWrap and cards at width "47%" - which
+          // worked while it was a mapped ScrollView, but a FlatList lays each
+          // row out in its own cell, so the percentage resolved against a
+          // cell that had collapsed to its content and every card came out a
+          // few characters wide.
+          numColumns={2}
+          columnWrapperStyle={styles.gridColumn}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
@@ -255,7 +290,7 @@ const ActiveTablesManager = () => {
               refreshing={isRefreshing}
               onRefresh={async () => {
                 setIsRefreshing(true);
-                await fetchSessions();
+                await fetchSessions(true);
                 setIsRefreshing(false);
               }}
               colors={["#ea580c"]}
@@ -266,6 +301,18 @@ const ActiveTablesManager = () => {
           maxToRenderPerBatch={8}
           windowSize={11}
           removeClippedSubviews
+          onEndReached={() => setVisibleCount((n) => n + TABLE_PAGE_SIZE)}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            <LoadMoreButton
+              onPress={() => setVisibleCount((n) => n + TABLE_PAGE_SIZE)}
+              hasMore={hasMoreSessions}
+              shown={renderedSessions.length}
+              total={visibleSessions.length}
+              showEndMarker={visibleSessions.length > 8}
+              endLabel="No more tables"
+            />
+          }
           renderItem={({ item: session }) => {
             const orders = session.orders || [];
             const activeCount = activeOrdersFor(session).length;
@@ -358,7 +405,7 @@ const ActiveTablesManager = () => {
                         <Text style={styles.orderItemPrice}>₹{it.price * it.quantity}</Text>
                       </View>
                     ))}
-                    {order.status !== "Cancelled" && (
+                    {canUpdateStatus && order.status !== "Cancelled" && (
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.orderActionsScroll}>
                         {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }) => {
                           const isCurrent = order.status === value;
@@ -393,7 +440,7 @@ const ActiveTablesManager = () => {
                         <Text style={styles.billItemName}>{item.name}</Text>
                         <Text style={styles.billItemQty}>{item.quantity} servings</Text>
                       </View>
-                      <Text style={styles.billItemAmount}>₹{item.subTotal}</Text>
+                      <Text style={styles.billItemAmount}>₹{formatMoney(item.subTotal)}</Text>
                     </View>
                   ))
                 ) : (
@@ -404,14 +451,22 @@ const ActiveTablesManager = () => {
               <View style={styles.settleBox}>
                 <View style={styles.settleRow}>
                   <Text style={styles.settleLabel}>Total Amount</Text>
-                  <Text style={styles.settleAmount}>₹{bill?.totalBillAmount ?? 0}</Text>
+                  <Text style={styles.settleAmount} numberOfLines={1} adjustsFontSizeToFit>
+                    ₹{formatMoney(bill?.totalBillAmount ?? 0)}
+                  </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.settleBtn}
-                  onPress={() => bill && setCloseTarget(bill.sessionId)}
-                >
-                  <Text style={styles.settleBtnText}>Clear Table & Complete</Text>
-                </TouchableOpacity>
+                {/* Settling is what ends a visit and finalises what is owed,
+                    so it follows manage_tables. Without it the bill is still
+                    readable - a waiter can look up what a table owes without
+                    being able to close it. */}
+                {canSettle && (
+                  <TouchableOpacity
+                    style={styles.settleBtn}
+                    onPress={() => bill && setCloseTarget(bill.sessionId)}
+                  >
+                    <Text style={styles.settleBtnText}>Clear Table & Complete</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </ScrollView>
           )}
@@ -475,8 +530,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  grid: { padding: 16, flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  tableCard: { width: "47%", backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", padding: 14, gap: 4 },
+  grid: { padding: 16, gap: 12 },
+  gridColumn: { gap: 12 },
+  tableCard: { flex: 1, backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", padding: 14, gap: 4 },
   tableCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
   tableNumberBadge: { width: 40, height: 40, borderRadius: 12, backgroundColor: "#fff7ed", alignItems: "center", justifyContent: "center" },
   tableNumberText: { fontSize: 16, fontWeight: "900", color: "#ea580c" },
@@ -522,9 +578,9 @@ const styles = StyleSheet.create({
   billEmptyText: { color: "#9ca3af", textAlign: "center", paddingVertical: 12, fontWeight: "600" },
 
   settleBox: { backgroundColor: "#fff7ed", borderRadius: 16, padding: 18 },
-  settleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 },
-  settleLabel: { fontSize: 12, fontWeight: "800", color: "#c2410c", textTransform: "uppercase" },
-  settleAmount: { fontSize: 26, fontWeight: "900", color: "#16a34a" },
+  settleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 14 },
+  settleLabel: { flexShrink: 0, fontSize: 12, fontWeight: "800", color: "#c2410c", textTransform: "uppercase" },
+  settleAmount: { flexShrink: 1, fontSize: 26, fontWeight: "900", color: "#16a34a", textAlign: "right" },
   settleBtn: { backgroundColor: "#16a34a", height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   settleBtnText: { color: "#ffffff", fontWeight: "800", fontSize: 14, textTransform: "uppercase", letterSpacing: 0.5 },
 });

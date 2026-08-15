@@ -10,6 +10,7 @@ import VersionCheckWrapper from './components/VersionCheckWrapper';
 import AppStatusGuard from './components/system/AppStatusGuard';
 import ErrorBoundary from './components/system/ErrorBoundary';
 import ThemedChrome from './components/system/ThemedChrome';
+import NotificationBridge from './components/system/NotificationBridge';
 import { loadToken } from './utils/tokenStorage';
 import BhojanQRLoader from './components/BhojanQRLoader';
 import SplashScreen from './components/SplashScreen';
@@ -44,6 +45,10 @@ const App = () => {
                 <AppStatusGuard>
                   <ErrorBoundary>
                     <VersionCheckWrapper>
+                      {/* Above the navigator so it is mounted for the whole
+                          session - a new order must alert whichever tab is
+                          open, or none at all. */}
+                      <NotificationBridge />
                       <AppNavigator />
                     </VersionCheckWrapper>
                   </ErrorBoundary>

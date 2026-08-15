@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
+import { useSelector } from "react-redux";
 import { ArrowLeft, Trash2 } from "lucide-react-native";
 
 import {
@@ -33,6 +34,10 @@ import SectionError from "../../components/SectionError";
 // they are already inside this component.
 export type MenuAction = "add" | "bulk";
 
+// Matches the server's own default for /menu/owner/my-menu. Kept explicit so
+// the page arithmetic here and the slice size there cannot drift apart.
+const PAGE_SIZE = 20;
+
 interface MenuManagerProps {
   pendingAction?: MenuAction | null;
   onActionConsumed?: () => void;
@@ -48,12 +53,26 @@ const MenuManager = ({
   onActionConsumed,
   onSubScreenChange,
 }: MenuManagerProps) => {
+  // Mirrors what menuRoutes.js enforces. The server is the authority - this
+  // only decides what is worth drawing, so a waiter is not shown a delete
+  // button that answers 403.
+  const user = useSelector((state: any) => state.auth?.user);
+  const isOwner = user?.role === "restaurant";
+  const perms: string[] = isOwner ? [] : user?.permissions || [];
+  const canEdit = isOwner || perms.includes("manage_menu");
+  const canDelete = isOwner || perms.includes("delete_menu");
+
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showBulkForm, setShowBulkForm] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+
+  const pageRef = useRef(1);
 
   const isSubScreen = isEditorOpen || showBulkForm;
 
@@ -90,24 +109,64 @@ const MenuManager = ({
     onActionConsumed?.();
   }, [pendingAction, onActionConsumed, openAddForm, openBulkForm]);
 
-  const fetchMenuItems = async () => {
-    try {
-      setLoading(true);
-      setLoadError(false);
-      const response = await getMyMenu();
-      const items = response?.data?.menuItems || response?.data?.data || [];
-      setMenuItems(items);
-    } catch {
-      Toast.show({ type: "error", text1: "Failed to load menu items" });
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // The server hands back one page at a time (20 by default) with totalItems
+  // alongside. `total` is the real menu size, which is what the toolbar count
+  // and the "delete all" copy must report - menuItems.length is only what has
+  // been scrolled into view so far.
+  const fetchMenuItems = useCallback(
+    async (page: number, mode: "replace" | "append", fresh = false) => {
+      try {
+        if (mode === "replace") setLoading(true);
+        setLoadError(false);
+
+        const response = await getMyMenu(page, PAGE_SIZE, fresh);
+        const body = response?.data || {};
+        const batch = body.menuItems || body.data || [];
+
+        setMenuItems((prev) => {
+          if (mode === "replace") return batch;
+          // Rows shift between pages when an item is added or removed while
+          // scrolling, so an offset-paginated append can repeat one. Key on
+          // _id rather than trusting skip/limit to stay stable.
+          const seen = new Set(prev.map((item: any) => item._id));
+          return [...prev, ...batch.filter((item: any) => !seen.has(item._id))];
+        });
+
+        setTotal(typeof body.totalItems === "number" ? body.totalItems : batch.length);
+        // totalPages is authoritative; fall back to a short page meaning the end.
+        const totalPages = body.totalPages ?? (batch.length < PAGE_SIZE ? page : page + 1);
+        setHasMore(page < totalPages);
+        pageRef.current = page;
+      } catch {
+        Toast.show({ type: "error", text1: "Failed to load menu items" });
+        if (mode === "replace") setLoadError(true);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [],
+  );
+
+  // Anything that changes what the menu contains restarts from page one -
+  // appending onto a stale first page would interleave old and new rows.
+  // Every caller of this is either a refresh or something that just CHANGED
+  // the menu, so all of them want the database rather than a cached page.
+  const reloadMenu = useCallback(() => {
+    pageRef.current = 1;
+    setHasMore(false);
+    fetchMenuItems(1, "replace", true);
+  }, [fetchMenuItems]);
+
+  const handleLoadMore = useCallback(() => {
+    if (loadingMore || loading || !hasMore) return;
+    setLoadingMore(true);
+    fetchMenuItems(pageRef.current + 1, "append");
+  }, [loadingMore, loading, hasMore, fetchMenuItems]);
 
   useEffect(() => {
-    fetchMenuItems();
-  }, []);
+    reloadMenu();
+  }, [reloadMenu]);
 
   const handleEditClick = (item: any) => {
     setEditingItem(item);
@@ -137,14 +196,14 @@ const MenuManager = ({
 
   const handleFormSuccess = () => {
     closeSubScreen();
-    fetchMenuItems();
+    reloadMenu();
   };
 
   const handleDelete = async (id: string) => {
     try {
       await deleteMenuItem(id);
       Toast.show({ type: "success", text1: "Item deleted successfully!" });
-      fetchMenuItems();
+      reloadMenu();
     } catch {
       Toast.show({ type: "error", text1: "Failed to delete item" });
     }
@@ -168,7 +227,7 @@ const MenuManager = ({
       // The list is the source of truth for what actually survived, so re-read
       // it rather than assuming the whole delete failed - a partial wipe would
       // otherwise leave the screen showing items that are already gone.
-      fetchMenuItems();
+      reloadMenu();
     } finally {
       setClearing(false);
     }
@@ -181,7 +240,7 @@ const MenuManager = ({
         type: "success", 
         text1: `Item marked as ${newStatus ? "Available" : "Unavailable"}` 
       });
-      fetchMenuItems();
+      reloadMenu();
     } catch {
       Toast.show({ type: "error", text1: "Failed to update availability" });
     }
@@ -232,10 +291,10 @@ const MenuManager = ({
       {/* Only offered when there is something to clear, and kept out of the
           header's + slot so a destructive action never sits next to the one
           people tap constantly. */}
-      {menuItems.length > 0 && (
+      {menuItems.length > 0 && canDelete && (
         <View style={styles.toolbar}>
           <Text style={styles.toolbarCount}>
-            {menuItems.length} item{menuItems.length === 1 ? "" : "s"}
+            {total || menuItems.length} item{(total || menuItems.length) === 1 ? "" : "s"}
           </Text>
           <TouchableOpacity
             style={styles.clearBtn}
@@ -255,7 +314,7 @@ const MenuManager = ({
 
       <View style={styles.mainContent}>
         {loadError && menuItems.length === 0 ? (
-          <SectionError message="Failed to load menu items." onRetry={fetchMenuItems} />
+          <SectionError message="Failed to load menu items." onRetry={reloadMenu} />
         ) : (
           <MenuList
             items={menuItems}
@@ -265,6 +324,12 @@ const MenuManager = ({
             onToggleAvailable={handleToggleAvailable}
             onAddItem={openAddForm}
             onBulkAdd={openBulkForm}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEndReached={handleLoadMore}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            total={total}
           />
         )}
       </View>

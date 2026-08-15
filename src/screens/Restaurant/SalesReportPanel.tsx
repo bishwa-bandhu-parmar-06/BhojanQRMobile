@@ -84,18 +84,18 @@ const SalesReportPanel = () => {
       </ScrollView>
 
       {activeTab === "daily" && (
-        <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={date} onChangeText={setDate} />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="YYYY-MM-DD" value={date} onChangeText={setDate} />
       )}
       {activeTab === "monthly" && (
-        <TextInput style={styles.input} placeholder="YYYY-MM" value={month} onChangeText={setMonth} />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="YYYY-MM" value={month} onChangeText={setMonth} />
       )}
       {activeTab === "yearly" && (
-        <TextInput style={styles.input} placeholder="YYYY" keyboardType="numeric" value={year} onChangeText={setYear} />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="YYYY" keyboardType="numeric" value={year} onChangeText={setYear} />
       )}
       {activeTab === "custom" && (
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <TextInput style={[styles.input, { flex: 1 }]} placeholder="Start YYYY-MM-DD" value={startDate} onChangeText={setStartDate} />
-          <TextInput style={[styles.input, { flex: 1 }]} placeholder="End YYYY-MM-DD" value={endDate} onChangeText={setEndDate} />
+          <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { flex: 1 }]} placeholder="Start YYYY-MM-DD" value={startDate} onChangeText={setStartDate} />
+          <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { flex: 1 }]} placeholder="End YYYY-MM-DD" value={endDate} onChangeText={setEndDate} />
         </View>
       )}
 

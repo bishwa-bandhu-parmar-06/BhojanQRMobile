@@ -83,7 +83,7 @@ const StaffAuth = () => {
               <View style={styles.formContainer}>
                 <View style={styles.inputWrapper}>
                   <FontAwesome5 name="envelope" size={16} color="#9ca3af" style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                     style={styles.textInput}
                     placeholder="you@example.com"
                     placeholderTextColor="#9ca3af"
@@ -96,7 +96,7 @@ const StaffAuth = () => {
 
                 <View style={styles.inputWrapper}>
                   <FontAwesome5 name="lock" size={16} color="#9ca3af" style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                     style={styles.textInput}
                     placeholder="Password"
                     placeholderTextColor="#9ca3af"

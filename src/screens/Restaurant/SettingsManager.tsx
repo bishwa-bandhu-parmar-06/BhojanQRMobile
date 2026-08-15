@@ -1298,7 +1298,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 50,
   },
-  input: { flex: 1, fontSize: 15, color: "#1f2937", fontWeight: "500", padding: 0 },
+  // paddingVertical 0 (not padding 0) so the text still centres inside the
+  // 50pt row, while leaving a couple of pixels of horizontal room.
+  //
+  // With `padding: 0` the caret is drawn on the very first pixel column of
+  // the input, and inputWrap's border and 12pt corner radius clip it - so an
+  // EMPTY field looked like it had not focused at all, while a field with
+  // text in it was fine because the caret had moved right of the edge. That
+  // is why it read as "the email box has no cursor": it is the field people
+  // tap into empty, whereas the password below it is usually typed straight
+  // away.
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: "#1f2937",
+    fontWeight: "500",
+    paddingVertical: 0,
+    paddingHorizontal: 2,
+  },
   fieldHint: { fontSize: 11, color: "#ef4444", marginTop: 6, fontWeight: "600" },
   currentValue: { fontSize: 12, color: "#9ca3af", fontWeight: "600", marginBottom: 14 },
 

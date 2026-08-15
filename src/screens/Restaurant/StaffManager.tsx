@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -22,10 +22,19 @@ import {
   ShieldOff,
   Eye,
   EyeOff,
+  Plus,
+  Check,
 } from "lucide-react-native";
 
-import { getStaffList, getStaffRoles, createStaff, updateStaff, deleteStaff, toggleStaffStatus } from "../../API/staffApi";
-import { PERMISSIONS, PERMISSION_LABELS, STAFF_ROLES, DEFAULT_ROLE_PERMISSIONS, Permission } from "../../constants/permissions";
+import { getStaffList, getStaffRoles, getPermissionCatalogue, createStaff, updateStaff, deleteStaff, toggleStaffStatus } from "../../API/staffApi";
+import {
+  PERMISSION_GROUPS,
+  PERMISSION_LABELS,
+  STAFF_ROLES,
+  DEFAULT_ROLE_PERMISSIONS,
+  Permission,
+  type PermissionGroup,
+} from "../../constants/permissions";
 import CustomModal from "../../components/CustomModal";
 import type { HeaderAction } from "../../components/Header";
 import { SkeletonBlock } from "../../components/Skeleton";
@@ -74,6 +83,16 @@ type StaffManagerProps = {
 const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [roles, setRoles] = useState<string[]>([...STAFF_ROLES]);
+  // Seeded from the bundled constants so the form renders immediately, then
+  // replaced by whatever the server actually enforces.
+  const [permissionGroups, setPermissionGroups] = useState<PermissionGroup[]>(PERMISSION_GROUPS);
+  const [roleDefaults, setRoleDefaults] =
+    useState<Record<string, Permission[]>>(DEFAULT_ROLE_PERMISSIONS);
+
+  const allPermissionKeys = useMemo(
+    () => permissionGroups.flatMap((g) => g.permissions.map((p) => p.key)),
+    [permissionGroups],
+  );
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -100,6 +119,17 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
 
   useEffect(() => {
     fetchStaff();
+    getPermissionCatalogue()
+      .then((res) => {
+        const groups = res?.data?.data?.groups;
+        const defaults = res?.data?.data?.roleDefaults;
+        if (Array.isArray(groups) && groups.length) setPermissionGroups(groups);
+        if (defaults && typeof defaults === "object") setRoleDefaults(defaults);
+      })
+      // A failure here is not worth a toast: the bundled catalogue is a
+      // complete, working list, just possibly one release behind.
+      .catch(() => {});
+
     getStaffRoles()
       .then((res) => {
         if (res?.data?.data?.length) setRoles(res.data.data);
@@ -175,8 +205,45 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
     setForm((prev) => ({
       ...prev,
       staffRole,
-      permissions: DEFAULT_ROLE_PERMISSIONS[staffRole] || [],
+      permissions: roleDefaults[staffRole] || DEFAULT_ROLE_PERMISSIONS[staffRole] || [],
     }));
+  };
+
+  const [addingRole, setAddingRole] = useState(false);
+  const [newRole, setNewRole] = useState("");
+
+  // A custom role is just a string on the staff record - the server stores
+  // whatever it is sent (max 40 chars) and getStaffRoles surfaces every title
+  // already in use back into this list. So nothing needs creating first; the
+  // role exists the moment a member is saved with it.
+  const commitNewRole = () => {
+    const trimmed = newRole.trim();
+    if (!trimmed) return;
+
+    // Case-insensitive match so "cashier" does not become a second entry
+    // beside an existing "Cashier".
+    const existing = roles.find((r) => r.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      handleRoleChange(existing);
+    } else {
+      setRoles((prev) => [...prev, trimmed]);
+      // Deliberately NOT routed through handleRoleChange: that applies a
+      // role's default permissions, and a brand-new role has none. Setting
+      // the field directly leaves the checkboxes exactly as the owner left
+      // them rather than silently clearing what they had already ticked.
+      setForm((prev) => ({ ...prev, staffRole: trimmed }));
+    }
+
+    setNewRole("");
+    setAddingRole(false);
+  };
+
+  const toggleGroup = (keys: string[], grant: boolean) => {
+    setForm((prev) => {
+      const next = new Set(prev.permissions);
+      keys.forEach((k) => (grant ? next.add(k) : next.delete(k)));
+      return { ...prev, permissions: Array.from(next) };
+    });
   };
 
   const togglePermission = (permission: Permission) => {
@@ -500,7 +567,7 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalScroll}>
             <Text style={styles.fieldLabel}>Name *</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.input}
               placeholder="e.g. Ramesh Kumar"
               value={form.name}
@@ -508,7 +575,7 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
             />
 
             <Text style={styles.fieldLabel}>Email *</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={[styles.input, !!editingStaff && styles.inputDisabled]}
               placeholder="staff@example.com"
               keyboardType="email-address"
@@ -520,7 +587,7 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
 
             <Text style={styles.fieldLabel}>{editingStaff ? "New Password" : "Password *"}</Text>
             <View style={styles.passwordWrapper}>
-              <TextInput
+              <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                 style={styles.passwordInput}
                 placeholder={editingStaff ? "Leave blank to keep current" : "8+ characters"}
                 secureTextEntry={!showPassword}
@@ -543,29 +610,130 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
                   <Text style={[styles.roleChipText, form.staffRole === role && styles.roleChipTextActive]}>{role}</Text>
                 </TouchableOpacity>
               ))}
+
+              {/* The role has always been free text on the server - the list
+                  above is just Manager/Chef/Waiter plus whatever titles this
+                  restaurant already uses. This is the only way to introduce
+                  a new one, which previously meant an owner could not create
+                  "Cashier" or "Host" at all. */}
+              <TouchableOpacity
+                onPress={() => setAddingRole(true)}
+                style={[styles.roleChip, styles.roleChipAdd]}
+                activeOpacity={0.75}
+              >
+                <Plus size={13} color="#ea580c" />
+                <Text style={styles.roleChipAddText}>New role</Text>
+              </TouchableOpacity>
             </ScrollView>
+
+            {addingRole && (
+              <View style={styles.newRoleRow}>
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
+                  style={[styles.input, styles.newRoleInput]}
+                  placeholder="e.g. Cashier"
+                  value={newRole}
+                  onChangeText={setNewRole}
+                  autoFocus
+                  maxLength={40}
+                  autoCapitalize="words"
+                  onSubmitEditing={commitNewRole}
+                  returnKeyType="done"
+                />
+                <TouchableOpacity
+                  onPress={commitNewRole}
+                  disabled={!newRole.trim()}
+                  style={[styles.newRoleBtn, !newRole.trim() && styles.newRoleBtnDisabled]}
+                  activeOpacity={0.8}
+                >
+                  <Check size={16} color="#ffffff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setAddingRole(false);
+                    setNewRole("");
+                  }}
+                  style={styles.newRoleCancel}
+                  activeOpacity={0.75}
+                >
+                  <X size={16} color="#9ca3af" />
+                </TouchableOpacity>
+              </View>
+            )}
+
             <Text style={styles.helperText}>
-              Picking a role auto-checks its default permissions below - you can still customize them.
+              Picking a role auto-checks its default permissions below - you can still customize
+              them. A new role starts with nothing checked, so tick exactly what it should have.
             </Text>
 
-            <Text style={styles.fieldLabel}>Permissions</Text>
-            <View style={styles.permissionsBox}>
-              {PERMISSIONS.map((permission) => {
-                const checked = form.permissions.includes(permission);
-                return (
-                  <TouchableOpacity
-                    key={permission}
-                    onPress={() => togglePermission(permission)}
-                    style={styles.permissionRow}
-                  >
-                    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                      {checked && <View style={styles.checkboxDot} />}
-                    </View>
-                    <Text style={styles.permissionLabel}>{PERMISSION_LABELS[permission]}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+            <View style={styles.permHeaderRow}>
+              <Text style={styles.fieldLabel}>Permissions</Text>
+              <Text style={styles.permGrantedCount}>
+                {form.permissions.length} of {allPermissionKeys.length}
+              </Text>
             </View>
+
+            {/* Grouped, not one flat list of eighteen checkboxes. Grouping is
+                what makes it obvious that a right has been left off - an
+                owner scanning "Menu" sees both of its rows together, where a
+                single column made it easy to grant edit and miss delete.
+                Each group has a select-all so a common case is one tap. */}
+            {permissionGroups.map((group) => {
+              const keys = group.permissions.map((p) => p.key);
+              const grantedCount = keys.filter((k) => form.permissions.includes(k)).length;
+              const allGranted = grantedCount === keys.length;
+
+              return (
+                <View key={group.id} style={styles.permGroup}>
+                  <View style={styles.permGroupHead}>
+                    <View style={styles.permGroupTitleWrap}>
+                      <Text style={styles.permGroupTitle}>{group.label}</Text>
+                      {!!group.description && (
+                        <Text style={styles.permGroupDesc}>{group.description}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => toggleGroup(keys, !allGranted)}
+                      style={styles.permGroupToggle}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.permGroupToggleText}>
+                        {allGranted ? "Clear" : "All"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.permissionsBox}>
+                    {group.permissions.map((item) => {
+                      const checked = form.permissions.includes(item.key);
+                      return (
+                        <TouchableOpacity
+                          key={item.key}
+                          onPress={() => togglePermission(item.key)}
+                          style={styles.permissionRow}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+                            {checked && <View style={styles.checkboxDot} />}
+                          </View>
+                          <View style={styles.permissionTextWrap}>
+                            <Text style={styles.permissionLabel}>
+                              {item.label || PERMISSION_LABELS[item.key] || item.key}
+                            </Text>
+                            {/* The hint is where the consequence lives -
+                                "cannot be undone", "lets someone widen
+                                colleagues' access". A label alone does not
+                                tell an owner what they are handing over. */}
+                            {!!item.hint && (
+                              <Text style={styles.permissionHint}>{item.hint}</Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
 
             {editingStaff && (
               <View style={styles.activeRow}>
@@ -792,15 +960,79 @@ const styles = StyleSheet.create({
   roleRow: { flexDirection: "row" },
   roleChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 100, backgroundColor: "#f3f4f6", marginRight: 8 },
   roleChipActive: { backgroundColor: "#ea580c" },
+  roleChipAdd: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#fff7ed",
+    borderColor: "#fed7aa",
+    borderStyle: "dashed",
+  },
+  roleChipAddText: { fontSize: 12, fontWeight: "800", color: "#ea580c" },
+  newRoleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+  newRoleInput: { flex: 1, marginBottom: 0 },
+  newRoleBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#ea580c",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  newRoleBtnDisabled: { backgroundColor: "#fdba74" },
+  newRoleCancel: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   roleChipText: { fontSize: 13, fontWeight: "700", color: "#6b7280" },
   roleChipTextActive: { color: "#fff" },
   helperText: { fontSize: 11, color: "#9ca3af", marginTop: 8, lineHeight: 16 },
+  permHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  permGrantedCount: { fontSize: 12, fontWeight: "800", color: "#ea580c" },
+  permGroup: { marginBottom: 16 },
+  permGroupHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 7,
+  },
+  permGroupTitleWrap: { flex: 1 },
+  permGroupTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: "#6b7280",
+  },
+  permGroupDesc: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
+  permGroupToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  permGroupToggleText: { fontSize: 11, fontWeight: "800", color: "#ea580c" },
   permissionsBox: { backgroundColor: "#ffffff", borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb", padding: 8 },
-  permissionRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 8 },
+  // alignItems flex-start so the checkbox sits level with the first line of a
+  // label that wraps onto two, rather than floating in the middle of it.
+  permissionRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 10, paddingHorizontal: 8 },
+  permissionTextWrap: { flex: 1 },
+  permissionHint: { fontSize: 11, lineHeight: 16, color: "#9ca3af", marginTop: 3 },
   checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: "#d1d5db", alignItems: "center", justifyContent: "center" },
   checkboxChecked: { borderColor: "#ea580c", backgroundColor: "#ea580c" },
   checkboxDot: { width: 8, height: 8, borderRadius: 2, backgroundColor: "#fff" },
-  permissionLabel: { fontSize: 13, fontWeight: "600", color: "#374151", flex: 1 },
+  permissionLabel: { fontSize: 13, fontWeight: "700", color: "#374151" },
   activeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#ffffff", borderRadius: 14, borderWidth: 1, borderColor: "#e5e7eb", padding: 16, marginTop: 20 },
   activeLabel: { fontSize: 14, fontWeight: "800", color: "#1f2937" },
   activeSubLabel: { fontSize: 11, color: "#9ca3af", marginTop: 2 },

@@ -107,7 +107,7 @@ const ForgotPassword = () => {
                 <>
                   <View style={styles.inputWrapper}>
                     <FontAwesome5 name="envelope" size={16} color="#9ca3af" style={styles.inputIcon} />
-                    <TextInput
+                    <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                       style={styles.input}
                       placeholder="Email Address"
                       placeholderTextColor="#9ca3af"

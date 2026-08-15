@@ -79,8 +79,10 @@ export const HISTORY_GRACE_MS = 60 * 1000;
 export const TERMINAL_ORDER_STATUSES = ['Completed', 'Cancelled'];
 
 /**
- * True once a terminal order has served out its grace period and belongs to
- * history rather than the live boards.
+ * True once a terminal order has served out its grace period.
+ *
+ * Only meaningful for an order standing on its own. Anything belonging to a
+ * table session must be judged with isArchivedGroup instead - see below.
  */
 export const isArchivedOrder = (order: any, now: number = Date.now()): boolean => {
   if (!TERMINAL_ORDER_STATUSES.includes(order?.status)) return false;
@@ -89,4 +91,52 @@ export const isArchivedOrder = (order: any, now: number = Date.now()): boolean =
   // vanishing - visible and stale beats silently gone.
   if (!Number.isFinite(changedAt) || changedAt === 0) return false;
   return now - changedAt >= HISTORY_GRACE_MS;
+};
+
+/** The key that ties repeat orders from one visit together. */
+export const sessionKeyOf = (order: any): string =>
+  order?.tableSessionId || order?._id;
+
+/**
+ * Groups orders by dining session, preserving order within each group.
+ */
+export const groupBySession = (orders: any[]): any[][] => {
+  const map = new Map<string, any[]>();
+  orders.forEach((order) => {
+    const key = sessionKeyOf(order);
+    const group = map.get(key);
+    if (group) group.push(order);
+    else map.set(key, [order]);
+  });
+  return Array.from(map.values());
+};
+
+/**
+ * True once an ENTIRE session belongs to history.
+ *
+ * A session archives as one unit, never order by order. Judging each order
+ * separately meant a table with three orders lost the first one off the board
+ * the moment it was completed, leaving a "combined session" that no longer
+ * showed everything the table had ordered - and eventually a session card
+ * standing in for a single remaining order.
+ *
+ * Both conditions have to hold:
+ *   - every order in the session has reached a terminal state, and
+ *   - the MOST RECENT of those changes is older than the grace period.
+ *
+ * Taking the most recent is what keeps the group together: if one order was
+ * completed ten minutes ago and its neighbour ten seconds ago, the session is
+ * still on the board, because otherwise the two halves would separate.
+ */
+export const isArchivedGroup = (orders: any[], now: number = Date.now()): boolean => {
+  if (!orders?.length) return false;
+  if (!orders.every((o) => TERMINAL_ORDER_STATUSES.includes(o?.status))) return false;
+
+  const lastChangedAt = orders.reduce((latest, o) => {
+    const t = new Date(o.statusUpdatedAt || o.updatedAt || 0).getTime();
+    return Number.isFinite(t) ? Math.max(latest, t) : latest;
+  }, 0);
+
+  if (lastChangedAt === 0) return false;
+  return now - lastChangedAt >= HISTORY_GRACE_MS;
 };

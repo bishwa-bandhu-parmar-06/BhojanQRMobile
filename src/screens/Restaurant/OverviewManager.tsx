@@ -50,7 +50,7 @@ const OverviewManager = () => {
   const fetchStats = async () => {
       try {
         setLoadError(false);
-        const response = await getDashboardStats();
+        const response = await getDashboardStats(true);
         if (response.data.success) {
           // Backend returns a nested shape (menuStats/revenueStats/...), not
           // the flat one this screen used to render - see restaurantController.js's

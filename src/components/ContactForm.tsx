@@ -119,7 +119,7 @@ const ContactForm: React.FC<ContactFormProps> = ({ onClose }) => {
                   <Text style={styles.inputLabel}>Full Name</Text>
                   <View style={[styles.inputBox, focusedInput === 'name' && styles.inputBoxFocused]}>
                     <FontAwesome5 name="user" size={14} color={focusedInput === 'name' ? '#ea580c' : '#9ca3af'} style={styles.inputIcon} />
-                    <TextInput
+                    <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                       style={styles.textInput}
                       placeholder="John Doe"
                       placeholderTextColor="#9ca3af"
@@ -136,7 +136,7 @@ const ContactForm: React.FC<ContactFormProps> = ({ onClose }) => {
                   <Text style={styles.inputLabel}>Email Address</Text>
                   <View style={[styles.inputBox, focusedInput === 'email' && styles.inputBoxFocused]}>
                     <FontAwesome5 name="envelope" size={14} color={focusedInput === 'email' ? '#ea580c' : '#9ca3af'} style={styles.inputIcon} />
-                    <TextInput
+                    <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                       style={styles.textInput}
                       placeholder="john@example.com"
                       placeholderTextColor="#9ca3af"
@@ -155,7 +155,7 @@ const ContactForm: React.FC<ContactFormProps> = ({ onClose }) => {
                   <Text style={styles.inputLabel}>Mobile Number</Text>
                   <View style={[styles.inputBox, focusedInput === 'mobile' && styles.inputBoxFocused]}>
                     <FontAwesome5 name="phone-alt" size={14} color={focusedInput === 'mobile' ? '#ea580c' : '#9ca3af'} style={styles.inputIcon} />
-                    <TextInput
+                    <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                       style={styles.textInput}
                       placeholder="+91 98765 43210"
                       placeholderTextColor="#9ca3af"
@@ -173,7 +173,7 @@ const ContactForm: React.FC<ContactFormProps> = ({ onClose }) => {
                   <Text style={styles.inputLabel}>Message</Text>
                   <View style={[styles.inputBox, styles.textAreaBox, focusedInput === 'message' && styles.inputBoxFocused]}>
                     <FontAwesome5 name="comment-alt" size={14} color={focusedInput === 'message' ? '#ea580c' : '#9ca3af'} style={styles.textAreaIcon} />
-                    <TextInput
+                    <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                       style={styles.textAreaInput}
                       placeholder="How can we help you?"
                       placeholderTextColor="#9ca3af"

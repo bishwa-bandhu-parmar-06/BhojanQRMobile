@@ -108,7 +108,7 @@ const TrackOrder = () => {
         <View style={styles.searchCard}>
           <View style={styles.inputWrapper}>
             <Search size={20} color="#94a3b8" style={styles.searchIcon} />
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.input}
               value={token}
               onChangeText={setToken}

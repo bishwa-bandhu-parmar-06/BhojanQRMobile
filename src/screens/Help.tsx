@@ -61,7 +61,7 @@ const Help = () => {
 
               <View style={[styles.searchContainer, styles.premiumShadow]}>
                 <FontAwesome5 name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.searchInput}
                   placeholder="Search articles, FAQs..."
                   placeholderTextColor="#9ca3af"

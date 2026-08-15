@@ -52,9 +52,9 @@ const AdminProfileManager = ({ admin, onRefreshParent }: { admin: any, onRefresh
         {editMode ? (
           <View style={styles.editForm}>
             <Text style={styles.inputLabel}>Full Name</Text>
-            <TextInput style={styles.input} value={editFormData.name} onChangeText={(val) => setEditFormData({ ...editFormData, name: val })} />
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} value={editFormData.name} onChangeText={(val) => setEditFormData({ ...editFormData, name: val })} />
             <Text style={styles.inputLabel}>Mobile Number</Text>
-            <TextInput style={styles.input} value={editFormData.mobile} onChangeText={(val) => setEditFormData({ ...editFormData, mobile: val })} keyboardType="phone-pad" />
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} value={editFormData.mobile} onChangeText={(val) => setEditFormData({ ...editFormData, mobile: val })} keyboardType="phone-pad" />
             
             <View style={styles.btnRow}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditMode(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>

@@ -186,7 +186,7 @@ const AdminAuth = () => {
                   <>
                     <View style={styles.inputWrapper}>
                       <User size={20} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput
+                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                         style={styles.input}
                         placeholder="Full Name"
                         placeholderTextColor="#9ca3af"
@@ -197,7 +197,7 @@ const AdminAuth = () => {
 
                     <View style={styles.inputWrapper}>
                       <Phone size={20} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput
+                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                         style={styles.input}
                         placeholder="Mobile Number"
                         placeholderTextColor="#9ca3af"
@@ -211,7 +211,7 @@ const AdminAuth = () => {
 
                 <View style={styles.inputWrapper}>
                   <Mail size={20} color="#9ca3af" style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                     style={styles.input}
                     placeholder="Email Address"
                     placeholderTextColor="#9ca3af"
@@ -224,7 +224,7 @@ const AdminAuth = () => {
 
                 <View style={styles.inputWrapper}>
                   <Lock size={20} color="#9ca3af" style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                     style={styles.input}
                     placeholder="Password"
                     placeholderTextColor="#9ca3af"

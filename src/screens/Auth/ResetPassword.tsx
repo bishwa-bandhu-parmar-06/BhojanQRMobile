@@ -111,7 +111,7 @@ const ResetPassword = () => {
             <View style={styles.card}>
               <View style={styles.inputWrapper}>
                 <FontAwesome5 name="key" size={16} color="#9ca3af" style={styles.inputIcon} />
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   placeholder="Reset Token (from email)"
                   placeholderTextColor="#9ca3af"
@@ -123,7 +123,7 @@ const ResetPassword = () => {
 
               <View style={styles.inputWrapper}>
                 <FontAwesome5 name="lock" size={16} color="#9ca3af" style={styles.inputIcon} />
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   placeholder="New Password"
                   placeholderTextColor="#9ca3af"
@@ -138,7 +138,7 @@ const ResetPassword = () => {
 
               <View style={styles.inputWrapper}>
                 <FontAwesome5 name="lock" size={16} color="#9ca3af" style={styles.inputIcon} />
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.input}
                   placeholder="Confirm New Password"
                   placeholderTextColor="#9ca3af"

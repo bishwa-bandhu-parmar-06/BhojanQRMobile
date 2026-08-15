@@ -13,8 +13,24 @@ export const getAllMenuItems = (page = 1, limit = 8) => {
   return response;
 };
 
-export const getMyMenu = () => {
-  return api.get(`${BASE_URL}/owner/my-menu`);
+// The server paginates this at 20 by default and answers with totalItems /
+// totalPages / currentPage alongside the rows. Calling it with no arguments
+// used to silently return only the first 20 - which is why a 100-item menu
+// showed 20 in the app.
+export const getMyMenu = (page = 1, limit = 20, fresh = false) => {
+  return api.get(`${BASE_URL}/owner/my-menu`, {
+    params: { page, limit, ...(fresh ? { fresh: 1 } : {}) },
+  });
+};
+
+// Everything in one request, for the places that need the WHOLE menu rather
+// than a screenful: the Happy Hours offer form builds its category list and
+// item picker from this, and with only the first page it would offer a
+// category set that silently excluded most of the menu.
+export const getFullMenu = (fresh = false) => {
+  return api.get(`${BASE_URL}/owner/my-menu`, {
+    params: { page: 1, limit: 1000, ...(fresh ? { fresh: 1 } : {}) },
+  });
 };
 
 export const addMenuItem = formDataToSend => {

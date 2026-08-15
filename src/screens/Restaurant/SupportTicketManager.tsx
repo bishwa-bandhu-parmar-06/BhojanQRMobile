@@ -256,7 +256,7 @@ const SupportTicketManager = ({
           </Text>
 
           <Text style={styles.label}>Subject</Text>
-          <TextInput
+          <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
             style={styles.input}
             value={subject}
             onChangeText={setSubject}
@@ -269,7 +269,7 @@ const SupportTicketManager = ({
             <Text style={styles.label}>Description</Text>
             <Text style={styles.counter}>{description.length}/2000</Text>
           </View>
-          <TextInput
+          <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
             style={[styles.input, styles.textarea]}
             value={description}
             onChangeText={setDescription}

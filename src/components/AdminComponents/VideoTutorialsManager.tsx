@@ -276,7 +276,7 @@ const VideoTutorialsManager = () => {
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalScroll}>
             <Text style={styles.fieldLabel}>Title *</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={styles.input}
               placeholder="e.g. How to generate QR codes for your tables"
               value={form.title}
@@ -284,7 +284,7 @@ const VideoTutorialsManager = () => {
             />
 
             <Text style={styles.fieldLabel}>Description</Text>
-            <TextInput
+            <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={[styles.input, styles.textArea]}
               placeholder="A short summary of what this video covers"
               multiline
@@ -312,7 +312,7 @@ const VideoTutorialsManager = () => {
             </View>
 
             {form.sourceType === "youtube" ? (
-              <TextInput
+              <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                 style={styles.input}
                 placeholder="https://youtube.com/watch?v=... or https://youtu.be/..."
                 autoCapitalize="none"

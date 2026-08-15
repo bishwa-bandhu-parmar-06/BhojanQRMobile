@@ -166,7 +166,7 @@ const NewsletterManager = () => {
           <Text style={styles.fieldLabel}>Subject</Text>
           <Text style={styles.charCount}>{form.subject.length}/{SUBJECT_MAX_LENGTH}</Text>
         </View>
-        <TextInput
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
           style={styles.input}
           placeholder="e.g. New: Kitchen workflow improvements are live"
           maxLength={SUBJECT_MAX_LENGTH}
@@ -178,7 +178,7 @@ const NewsletterManager = () => {
           <Text style={styles.fieldLabel}>Content (HTML supported)</Text>
           <Text style={styles.charCount}>{form.content.length}/{CONTENT_MAX_LENGTH}</Text>
         </View>
-        <TextInput
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
           style={[styles.input, styles.textArea]}
           placeholder="<h2>Hi there!</h2><p>Here's what's new...</p>"
           maxLength={CONTENT_MAX_LENGTH}

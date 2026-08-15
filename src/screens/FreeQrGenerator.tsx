@@ -69,7 +69,7 @@ const FreeQrGenerator = () => {
             <View style={styles.sectionContainer}>
               <View style={[styles.inputCard, styles.premiumShadow]}>
                 <Text style={styles.fieldLabel}>Enter a URL or text</Text>
-                <TextInput
+                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
                   style={styles.textArea}
                   value={text}
                   onChangeText={setText}

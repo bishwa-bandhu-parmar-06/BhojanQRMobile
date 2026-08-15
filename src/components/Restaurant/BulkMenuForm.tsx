@@ -139,15 +139,15 @@ const BulkMenuForm: React.FC<BulkMenuFormProps> = ({ onCancel, onSuccess }) => {
             </TouchableOpacity>
 
             <View style={styles.inputsColumn}>
-              <TextInput style={styles.input} placeholder="Item Name *" value={item.name} onChangeText={(v) => handleChange(item.id, "name", v)} editable={!isUploading} />
-              <TextInput style={styles.input} placeholder="Price *" keyboardType="numeric" value={item.price} onChangeText={(v) => handleChange(item.id, "price", v)} editable={!isUploading} />
+              <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="Item Name *" value={item.name} onChangeText={(v) => handleChange(item.id, "name", v)} editable={!isUploading} />
+              <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="Price *" keyboardType="numeric" value={item.price} onChangeText={(v) => handleChange(item.id, "price", v)} editable={!isUploading} />
               <View style={styles.pickerContainer}>
                 <Picker selectedValue={item.category} onValueChange={(v) => handleChange(item.id, "category", v)} enabled={!isUploading}>
                   <Picker.Item label="Main Course" value="Main Course" /><Picker.Item label="Starter" value="Starter" />
                   <Picker.Item label="Dessert" value="Dessert" /><Picker.Item label="Beverage" value="Beverage" />
                 </Picker>
               </View>
-              <TextInput style={styles.input} placeholder="Description" value={item.description} onChangeText={(v) => handleChange(item.id, "description", v)} editable={!isUploading} />
+              <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="Description" value={item.description} onChangeText={(v) => handleChange(item.id, "description", v)} editable={!isUploading} />
             </View>
 
             <TouchableOpacity onPress={() => removeRow(item.id)} disabled={isUploading} style={styles.deleteBtn}>
