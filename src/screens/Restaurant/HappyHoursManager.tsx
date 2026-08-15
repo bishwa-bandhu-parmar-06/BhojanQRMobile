@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -25,12 +25,14 @@ import {
   Play,
   Pause,
   Ban,
+  Clock,
 } from "lucide-react-native";
 
 import { getMyOffers, createOffer, updateOffer, updateOfferStatus, deleteOffer } from "../../API/offerApi";
 import { getMyMenu } from "../../API/menuApi";
 import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
+import type { HeaderAction } from "../../components/Header";
 
 const DAYS = [
   { value: "mon", label: "Mon" },
@@ -56,7 +58,16 @@ const STATUS_META: Record<string, { color: string; bg: string; label: string }> 
   disabled: { color: "#6b7280", bg: "#f3f4f6", label: "Disabled" },
 };
 
-const HappyHoursManager = () => {
+type HappyHoursManagerProps = {
+  // Puts this panel's controls in the dashboard's section bar.
+  onHeaderActions?: (actions: HeaderAction[]) => void;
+  // Hands the menu forms back to MenuManager, which already renders them as
+  // full sub-screens. Building a second copy of them here would mean two
+  // implementations of the same form drifting apart.
+  onRequestMenuAction?: (action: "add" | "bulk") => void;
+};
+
+const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursManagerProps) => {
   const [offers, setOffers] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,15 +97,23 @@ const HappyHoursManager = () => {
     }
   };
 
-  useEffect(() => {
-    fetchOffers();
+  const fetchMenu = () =>
     getMyMenu()
       .then((res) => setMenuItems(res?.data?.data || []))
       .catch(() => {});
+
+  useEffect(() => {
+    fetchOffers();
+    fetchMenu();
   }, []);
 
+  // Refreshing has to reload the menu too, not just the offers. The whole
+  // screen is gated on the menu being non-empty, so a refresh that left
+  // menuItems stale would leave someone stuck behind the gate they had just
+  // satisfied - which is exactly what its "check again" button promises.
   const handleRefresh = () => {
     setIsRefreshing(true);
+    fetchMenu();
     fetchOffers();
   };
 
@@ -246,6 +265,52 @@ const HappyHoursManager = () => {
     }
   };
 
+  // An offer discounts menu items, so with an empty menu there is nothing for
+  // one to apply to - the form's "apply to items/category" pickers would be
+  // empty and any offer created would silently affect nothing. Blocking
+  // creation up front is clearer than letting someone build an offer that
+  // cannot work.
+  const hasMenu = menuItems.length > 0;
+
+  // Handlers in a ref so the publishing effect below reacts only to hasMenu.
+  // Depending on the handlers directly would re-run it every render,
+  // publishing a fresh array each time and bouncing renders between this
+  // panel and the dashboard indefinitely.
+  const handlersRef = useRef({ refresh: () => {}, create: () => {} });
+  handlersRef.current = { refresh: handleRefresh, create: openCreateModal };
+
+  // Refresh is always offered - it is how someone escapes the no-menu gate.
+  // "New offer" is not: with an empty menu there is nothing to discount, so
+  // the button would open a form that cannot produce a working offer. It
+  // appears the moment a menu exists.
+  useEffect(() => {
+    const actions: HeaderAction[] = [
+      {
+        key: "refresh",
+        icon: RefreshCw,
+        label: "Refresh",
+        onPress: () => handlersRef.current.refresh(),
+      },
+    ];
+
+    if (hasMenu) {
+      actions.push({
+        key: "add-offer",
+        icon: Plus,
+        label: "New offer",
+        // Labelled pill, not a bare icon: this is the primary action on the
+        // screen once the gate is passed.
+        showLabel: true,
+        onPress: () => handlersRef.current.create(),
+      });
+    }
+
+    onHeaderActions?.(actions);
+  }, [onHeaderActions, hasMenu]);
+
+  // Leaving the section takes the buttons with it.
+  useEffect(() => () => onHeaderActions?.([]), [onHeaderActions]);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -271,91 +336,182 @@ const HappyHoursManager = () => {
     );
   }
 
+  if (!hasMenu) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyState}>
+          <View style={styles.gateIconRing}>
+            <View style={styles.gateIconCircle}>
+              <UtensilsCrossed size={30} color="#ea580c" />
+            </View>
+          </View>
+          <Text style={styles.emptyTitle}>Add your menu first</Text>
+          <Text style={styles.emptySubtitle}>
+            Happy Hours discount items on your menu, so there needs to be a menu before an
+            offer can do anything. Add a few dishes and this unlocks.
+          </Text>
+          <TouchableOpacity style={styles.gateBtn} onPress={handleRefresh} activeOpacity={0.8}>
+            {isRefreshing ? (
+              <ActivityIndicator size="small" color="#ea580c" />
+            ) : (
+              <RefreshCw size={15} color="#ea580c" />
+            )}
+            <Text style={styles.gateBtnText}>I've added items — check again</Text>
+          </TouchableOpacity>
+
+          {/* The gate names a prerequisite, so it should also be where that
+              prerequisite gets met - otherwise the only way forward is to
+              read the message, leave for the Menu tab and come back. Both
+              open MenuManager's existing full-screen forms. */}
+          <View style={styles.gateActions}>
+            <TouchableOpacity
+              style={styles.gatePrimaryBtn}
+              onPress={() => onRequestMenuAction?.("add")}
+              activeOpacity={0.85}
+            >
+              <Plus size={15} color="#fff" />
+              <Text style={styles.gatePrimaryBtnText}>Add item</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.gateSecondaryBtn}
+              onPress={() => onRequestMenuAction?.("bulk")}
+              activeOpacity={0.85}
+            >
+              <Layers size={15} color="#ea580c" />
+              <Text style={styles.gateSecondaryBtnText}>Bulk add</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        {/* <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Happy Hours</Text>
-          <Text style={styles.subtitle}>Time-based discounts that switch on/off automatically.</Text>
-        </View> */}
-        <TouchableOpacity onPress={handleRefresh} disabled={isRefreshing} style={styles.refreshBtn}>
-          <RefreshCw size={16} color="#ea580c" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={openCreateModal} style={styles.addBtn}>
-          <Plus size={16} color="#fff" />
-          <Text style={styles.addBtnText}>New</Text>
-        </TouchableOpacity>
-      </View>
-
+      {/* Refresh and "New offer" used to sit in a bare strip here. They are
+          in the section bar now, alongside every other panel's controls. */}
       {offers.length === 0 ? (
         <View style={styles.emptyState}>
-          <Sparkles size={40} color="#ea580c" style={{ marginBottom: 12 }} />
+          <View style={styles.gateIconRing}>
+            <View style={styles.gateIconCircle}>
+              <Sparkles size={30} color="#ea580c" />
+            </View>
+          </View>
           <Text style={styles.emptyTitle}>No offers yet</Text>
-          <Text style={styles.emptySubtitle}>Create a Happy Hour discount to boost off-peak orders.</Text>
+          <Text style={styles.emptySubtitle}>
+            Create a Happy Hour to discount dishes during quiet periods. They switch on and
+            off automatically on the schedule you set.
+          </Text>
+          {/* Same action as the section bar's pill. An empty list with its
+              only way out in the top corner reads as a dead end. */}
+          <TouchableOpacity
+            style={[styles.gatePrimaryBtn, styles.emptyCta]}
+            onPress={openCreateModal}
+            activeOpacity={0.85}
+          >
+            <Plus size={15} color="#fff" />
+            <Text style={styles.gatePrimaryBtnText}>Create offer</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}>
           {offers.map((offer) => {
             const meta = STATUS_META[offer.status] || STATUS_META.disabled;
-            return (
-              <View key={offer._id} style={styles.offerCard}>
-                <View style={styles.offerCardTop}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.offerName}>{offer.name}</Text>
-                    <Text style={styles.offerDiscount}>
-                      {offer.discountType === "percentage" ? `${offer.discountValue}% off` : `₹${offer.discountValue} off`}
-                      {"  ·  "}
-                      {offer.schedule?.startTime}–{offer.schedule?.endTime}
-                    </Text>
-                    <Text style={styles.offerDays}>
-                      {(offer.schedule?.days || []).map((d: string) => d.toUpperCase()).join(" · ")}
-                    </Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
-                    <Text style={[styles.statusBadgeText, { color: meta.color }]}>{meta.label}</Text>
-                  </View>
-                </View>
+            const days = offer.schedule?.days || [];
+              // The three status buttons used to sit in a row regardless of
+              // state, so "Activate" was offered on an already-active offer.
+              // Only the transitions that actually change something are shown.
+              const transitions = [
+                { id: "active", label: "Activate", icon: Play, color: "#16a34a" },
+                { id: "paused", label: "Pause", icon: Pause, color: "#d97706" },
+                { id: "disabled", label: "Disable", icon: Ban, color: "#6b7280" },
+              ].filter((t) => t.id !== offer.status);
 
-                <View style={styles.statusActionsRow}>
-                  <TouchableOpacity onPress={() => handleStatusChange(offer._id, "active")} style={styles.statusActionBtn}>
-                    <Play size={13} color="#16a34a" />
-                    <Text style={[styles.statusActionText, { color: "#16a34a" }]}>Activate</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleStatusChange(offer._id, "paused")} style={styles.statusActionBtn}>
-                    <Pause size={13} color="#d97706" />
-                    <Text style={[styles.statusActionText, { color: "#d97706" }]}>Pause</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleStatusChange(offer._id, "disabled")} style={styles.statusActionBtn}>
-                    <Ban size={13} color="#6b7280" />
-                    <Text style={[styles.statusActionText, { color: "#6b7280" }]}>Disable</Text>
-                  </TouchableOpacity>
-                </View>
+              return (
+                <View key={offer._id} style={styles.offerCard}>
+                  {/* The discount is the headline - it is what an owner scans
+                      the list for - so it leads at display size rather than
+                      being buried in a metadata line. */}
+                  <View style={styles.offerTop}>
+                    <View style={styles.discountBlock}>
+                      <Text style={styles.discountValue}>
+                        {offer.discountType === "percentage"
+                          ? `${offer.discountValue}%`
+                          : `₹${offer.discountValue}`}
+                      </Text>
+                      <Text style={styles.discountOff}>OFF</Text>
+                    </View>
 
-                <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => openEditModal(offer)} style={styles.cardActionBtn}>
-                    <Pencil size={14} color="#ea580c" />
-                    <Text style={styles.cardActionText}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setDeleteTarget(offer._id)}
-                    disabled={deletingId === offer._id}
-                    style={[styles.cardActionBtn, styles.cardActionDanger]}
-                  >
-                    {deletingId === offer._id ? (
-                      <>
+                    <View style={styles.offerIdentity}>
+                      <Text style={styles.offerName} numberOfLines={1}>
+                        {offer.name}
+                      </Text>
+                      <View style={styles.offerTimeRow}>
+                        <Clock size={12} color="#6b7280" />
+                        <Text style={styles.timeText}>
+                          {offer.schedule?.startTime}–{offer.schedule?.endTime}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
+                      <Text style={[styles.statusBadgeText, { color: meta.color }]}>{meta.label}</Text>
+                    </View>
+                  </View>
+
+                  {/* Every day of the week is shown, with the inactive ones
+                      dimmed - a list of only the active days makes you count
+                      to work out which are missing. */}
+                  <View style={styles.dayRow}>
+                    {DAYS.map(({ value, label }) => {
+                      const on = days.includes(value);
+                      return (
+                        <View key={value} style={[styles.dayPip, on && styles.dayPipOn]}>
+                          <Text style={[styles.dayPipText, on && styles.dayPipTextOn]}>
+                            {label.charAt(0)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+
+                  <View style={styles.statusActionsRow}>
+                    {transitions.map(({ id, label, icon: Icon, color }) => (
+                      <TouchableOpacity
+                        key={id}
+                        onPress={() => handleStatusChange(offer._id, id)}
+                        style={styles.statusActionBtn}
+                        activeOpacity={0.75}
+                      >
+                        <Icon size={13} color={color} />
+                        <Text style={[styles.statusActionText, { color }]}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity onPress={() => openEditModal(offer)} style={styles.cardActionBtn} activeOpacity={0.75}>
+                      <Pencil size={14} color="#ea580c" />
+                      <Text style={styles.cardActionText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setDeleteTarget(offer._id)}
+                      disabled={deletingId === offer._id}
+                      style={[styles.cardActionBtn, styles.cardActionDanger]}
+                      activeOpacity={0.75}
+                    >
+                      {deletingId === offer._id ? (
                         <ActivityIndicator size="small" color="#dc2626" />
-                        <Text style={[styles.cardActionText, { color: "#dc2626" }]}>Deleting...</Text>
-                      </>
-                    ) : (
-                      <>
+                      ) : (
                         <Trash2 size={14} color="#dc2626" />
-                        <Text style={[styles.cardActionText, { color: "#dc2626" }]}>Delete</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                      )}
+                      <Text style={[styles.cardActionText, styles.cardActionTextDanger]}>
+                        {deletingId === offer._id ? "Deleting…" : "Delete"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );
+              );
           })}
         </ScrollView>
       )}
@@ -544,29 +700,168 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "flex-end", padding: 16, gap: 8 },
   title: { fontSize: 24, fontWeight: "900", color: "#111827" },
   subtitle: { fontSize: 12, color: "#6b7280", fontWeight: "500", marginTop: 4 },
-  refreshBtn: { padding: 10, backgroundColor: "#fff7ed", borderRadius: 10 },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#ea580c", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
-  addBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },
 
-  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 60, marginHorizontal: 16, backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6" },
-  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#1f2937" },
-  emptySubtitle: { fontSize: 13, color: "#6b7280", textAlign: "center", marginTop: 6, paddingHorizontal: 24 },
+  // Unboxed and vertically centred, matching the orders, tables and menu
+  // lists so every empty state in the dashboard looks the same.
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#1f2937" },
+  emptySubtitle: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6b7280",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  gateIconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#fff7ed",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  gateIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#ffedd5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  gateBtnText: { fontSize: 13, fontWeight: "800", color: "#ea580c" },
+
+  // The two menu shortcuts sit as a pair under the refresh pill: adding a
+  // dish is the real fix for an empty menu, checking again is only how you
+  // confirm it. Both stay on one row so the gate does not become a stack of
+  // three full-width buttons.
+  gateActions: { flexDirection: "row", gap: 10, marginTop: 10 },
+  gatePrimaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: "#ea580c",
+  },
+  gatePrimaryBtnText: { fontSize: 13, fontWeight: "800", color: "#fff" },
+  gateSecondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  gateSecondaryBtnText: { fontSize: 13, fontWeight: "800", color: "#ea580c" },
+  emptyCta: { marginTop: 20 },
 
   list: { padding: 16, gap: 12 },
-  offerCard: { backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", padding: 14 },
-  offerCardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 },
+  offerCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    padding: 14,
+  },
+  offerTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  // The discount as a tinted tile: it is the one number the list is scanned
+  // for, so it gets the visual weight rather than a line of small orange text.
+  discountBlock: {
+    minWidth: 62,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    alignItems: "center",
+  },
+  discountValue: { fontSize: 18, fontWeight: "900", color: "#ea580c" },
+  discountOff: { fontSize: 9, fontWeight: "800", color: "#f97316", letterSpacing: 1 },
+  offerIdentity: { flex: 1 },
   offerName: { fontSize: 15, fontWeight: "800", color: "#1f2937" },
-  offerDiscount: { fontSize: 12, color: "#ea580c", fontWeight: "700", marginTop: 4 },
-  offerDays: { fontSize: 11, color: "#9ca3af", fontWeight: "600", marginTop: 2 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  statusBadgeText: { fontSize: 11, fontWeight: "800" },
-  statusActionsRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
-  statusActionBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: "#f9fafb" },
-  statusActionText: { fontSize: 11, fontWeight: "700" },
-  cardActions: { flexDirection: "row", gap: 10, borderTopWidth: 1, borderTopColor: "#f9fafb", paddingTop: 10 },
-  cardActionBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: "#fff7ed" },
+  // Named offerTimeRow, not timeRow: the modal form already owns that key for
+  // its start/end time inputs.
+  offerTimeRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  timeText: { fontSize: 12, color: "#6b7280", fontWeight: "600" },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 },
+  statusBadgeText: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
+
+  // Seven pips, one per weekday, inactive ones dimmed - the shape of the week
+  // is readable at a glance instead of having to parse a list of names.
+  dayRow: { flexDirection: "row", gap: 5, marginTop: 12 },
+  dayPip: {
+    flex: 1,
+    height: 26,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  dayPipOn: { backgroundColor: "#fff7ed", borderColor: "#fed7aa" },
+  dayPipText: { fontSize: 11, fontWeight: "800", color: "#cbd5e1" },
+  dayPipTextOn: { color: "#ea580c" },
+
+  statusActionsRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  statusActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  statusActionText: { fontSize: 11, fontWeight: "800" },
+  cardActions: {
+    flexDirection: "row",
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f8fafc",
+    marginTop: 14,
+    paddingTop: 12,
+  },
+  cardActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#fff7ed",
+  },
   cardActionDanger: { backgroundColor: "#fef2f2" },
-  cardActionText: { fontSize: 12, fontWeight: "700", color: "#ea580c" },
+  cardActionText: { fontSize: 12, fontWeight: "800", color: "#ea580c" },
+  cardActionTextDanger: { color: "#dc2626" },
 
   modalContainer: { flex: 1, backgroundColor: "#f9fafb" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingTop: 50, backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },

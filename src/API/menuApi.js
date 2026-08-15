@@ -33,6 +33,12 @@ export const updateMenuAvailability = id => {
   return api.post(`${BASE_URL}/${id}/availability`);
 };
 
+// Wipes the whole menu in one request. The route sits above the catch-all
+// "/:id" delete on the server, or Express would read "delete-all" as an id.
+export const deleteAllMenuItems = () => {
+  return api.post(`${BASE_URL}/delete-all`);
+};
+
 export const deleteMenuItem = id => {
   return api.post(`${BASE_URL}/${id}`);
 };

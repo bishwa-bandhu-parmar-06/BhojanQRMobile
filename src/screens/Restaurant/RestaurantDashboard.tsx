@@ -15,6 +15,8 @@ import { logout, updateUser } from "../../Features/AuthSlice";
 import { getRestaurantProfile, logoutRestaurant } from "../../API/restaurentApi";
 import { logoutStaff } from "../../API/staffApi";
 import { canAccessTab, getDefaultTab } from "../../constants/dashboardTabs";
+import { useThemeColors, useThemedStyles, type ThemeColors } from "../../theme";
+import { useTranslation } from "../../i18n";
 import type { Permission } from "../../constants/permissions";
 
 import CustomModal from "../../components/CustomModal";
@@ -40,6 +42,7 @@ import {
   Plus,
   Layers,
   RefreshCw,
+  LifeBuoy,
 } from "lucide-react-native";
 
 // IMPORT MANAGERS
@@ -56,6 +59,7 @@ import ActiveTablesManager from "./ActiveTablesManager";
 import StaffManager from "./StaffManager";
 import HappyHoursManager from "./HappyHoursManager";
 import NotificationManager from "./NotificationManager";
+import SupportTicketManager from "./SupportTicketManager";
 
 // The five bottom-bar destinations. Everything not here is reached through
 // "More", which keeps the bar readable - five is about the most that fits
@@ -65,11 +69,11 @@ import NotificationManager from "./NotificationManager";
 // old horizontal tab strip, so permission gating (canAccessTab) and the
 // landing-tab logic (getDefaultTab) keep working untouched.
 const BOTTOM_TABS = [
-  { id: "overview", label: "Home", icon: LayoutDashboard },
-  { id: "orders", label: "Orders", icon: ClipboardList },
-  { id: "active_tables", label: "Tables", icon: LayoutGrid },
-  { id: "menu", label: "Menu", icon: BookOpen },
-  { id: "more", label: "More", icon: MoreHorizontal },
+  { id: "overview", label: "tabs.home", icon: LayoutDashboard },
+  { id: "orders", label: "tabs.orders", icon: ClipboardList },
+  { id: "active_tables", label: "tabs.tables", icon: LayoutGrid },
+  { id: "menu", label: "tabs.menu", icon: BookOpen },
+  { id: "more", label: "tabs.more", icon: MoreHorizontal },
 ];
 
 // The secondary sections, listed on the More page. Notifications is included
@@ -81,40 +85,42 @@ const BOTTOM_TABS = [
 const MORE_SECTIONS = [
   // Profile first: it is the one an owner opens most, and it now holds
   // everything about the restaurant itself.
-  { id: "profile", label: "Profile Details", icon: User, hint: "Name, locations, logo, login, documents" },
-  { id: "staff", label: "Manage Staff", icon: Users, hint: "Team members and permissions" },
-  { id: "marketing", label: "Happy Hours", icon: Sparkles, hint: "Scheduled offers and discounts" },
-  { id: "qr", label: "Table QR Codes", icon: QrCode, hint: "Generate and print table codes" },
-  { id: "settings", label: "App Settings", icon: Settings, hint: "Theme, language, alerts" },
+  { id: "profile", label: "titles.profile", icon: User, hint: "more.profileHint" },
+  { id: "staff", label: "titles.staff", icon: Users, hint: "more.staffHint" },
+  { id: "marketing", label: "titles.happyHours", icon: Sparkles, hint: "more.happyHoursHint" },
+  { id: "qr", label: "titles.qr", icon: QrCode, hint: "more.qrHint" },
+  { id: "settings", label: "titles.appSettings", icon: Settings, hint: "more.settingsHint" },
+  { id: "support", label: "titles.support", icon: LifeBuoy, hint: "more.supportHint" },
 ];
 
 // Every panel that opens WITHOUT the app header, showing only its own back
 // bar. Notifications is included even though it is not a More row, because it
 // behaves identically once open.
 const SECTION_LABELS: Record<string, string> = {
-  settings: "App Settings",
-  staff: "Manage Staff",
-  marketing: "Happy Hours",
-  qr: "Table QR Codes",
-  profile: "Profile Details",
-  notifications: "Notifications",
+  settings: "titles.appSettings",
+  staff: "titles.staff",
+  marketing: "titles.happyHours",
+  qr: "titles.qr",
+  profile: "titles.profile",
+  notifications: "titles.notifications",
+  support: "titles.support",
 };
 
 // Menu actions, offered as rows on the More page. They are not sections - they
 // switch to the Menu tab and open a form there - so they are kept separate
 // from MORE_SECTIONS, which the back bar and tab highlighting both key off.
 const MORE_MENU_ACTIONS: { id: MenuAction; label: string; icon: any; hint: string }[] = [
-  { id: "add", label: "Add Menu Item", icon: Plus, hint: "Create a single dish" },
-  { id: "bulk", label: "Bulk Add Menu", icon: Layers, hint: "Add many dishes at once" },
+  { id: "add", label: "more.addMenuItem", icon: Plus, hint: "more.addMenuItemHint" },
+  { id: "bulk", label: "more.bulkAddMenu", icon: Layers, hint: "more.bulkAddMenuHint" },
 ];
 
 // Headings for the five bottom-bar destinations, shown centred in the header.
 const TAB_TITLES: Record<string, string> = {
-  overview: "Dashboard Overview",
-  orders: "Live Orders",
-  active_tables: "Active Tables",
-  menu: "Menu",
-  more: "More",
+  overview: "titles.overview",
+  orders: "titles.orders",
+  active_tables: "titles.tables",
+  menu: "titles.menu",
+  more: "titles.more",
 };
 
 const RestaurantDashboard = () => {
@@ -247,9 +253,22 @@ const RestaurantDashboard = () => {
   const [profileAction, setProfileAction] = useState<"manage" | null>(null);
   const handleProfileActionConsumed = useCallback(() => setProfileAction(null), []);
 
+  // Controls a panel puts in the section bar. The panel owns the state those
+  // buttons act on (how many notifications there are, which are unread), so it
+  // decides what to publish; the dashboard only draws what it is handed.
+  // Panels clear this on unmount, so buttons never linger onto another section.
+  const [sectionActions, setSectionActions] = useState<HeaderAction[]>([]);
+  const handleSectionActions = useCallback(
+    (actions: HeaderAction[]) => setSectionActions(actions),
+    [],
+  );
+
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
   const { user } = useSelector((state: any) => state.auth);
+  const c = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+  const { t } = useTranslation();
 
   // A staff login (role: "staff") has its own JWT, but /restaurants/profile
   // is hard-restricted to the owner on the backend (authorize("restaurant")
@@ -384,13 +403,26 @@ const RestaurantDashboard = () => {
       onPress: onRefresh,
     });
   }
+  // Both ways of adding, always - not conditioned on whether a menu exists.
+  // An owner with a full menu adds dishes as often as an owner with none, so
+  // there is no state in which either belongs on the More page only. Bare
+  // icons rather than labelled pills because the app bar's centred title runs
+  // across the full width; a pill on the right would sit on top of it.
   if (activeTab === "menu" && canAccessTab("menu", { isOwner, can })) {
-    headerActions.push({
-      key: "add-menu-item",
-      icon: Plus,
-      label: "Add menu item",
-      onPress: () => requestMenuAction("add"),
-    });
+    headerActions.push(
+      {
+        key: "add-menu-item",
+        icon: Plus,
+        label: "Add item",
+        onPress: () => requestMenuAction("add"),
+      },
+      {
+        key: "bulk-add-menu",
+        icon: Layers,
+        label: "Bulk add items",
+        onPress: () => requestMenuAction("bulk"),
+      },
+    );
   }
 
   // "more" has no TAB_ACCESS rule of its own - canAccessTab would return true
@@ -452,7 +484,7 @@ const RestaurantDashboard = () => {
              section, where the back bar below is the only chrome. */}
       {!openSectionLabel && !isSubScreenOpen && (
         <Header
-          title={TAB_TITLES[activeTab]}
+          title={t(TAB_TITLES[activeTab])}
           // No bell on More: that page is a static list of destinations, and
           // one of the things it lists is where notifications already live.
           // On Menu the + takes the bell's place instead.
@@ -477,22 +509,51 @@ const RestaurantDashboard = () => {
             onPress={goBack}
             activeOpacity={0.7}
           >
-            <ArrowLeft size={18} color="#374151" />
-            <Text style={styles.sectionBarText}>{openSectionLabel}</Text>
+            <ArrowLeft size={18} color={c.textBody} />
+            <Text style={styles.sectionBarText}>{t(openSectionLabel)}</Text>
           </TouchableOpacity>
 
-          {/* Everything that edits the profile lives behind this, so the page
-              itself can stay a read-only summary. */}
-          {activeTab === "profile" && (
-            <TouchableOpacity
-              onPress={() => setProfileAction("manage")}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Manage profile"
-            >
-              <Settings size={20} color="#374151" />
-            </TouchableOpacity>
-          )}
+          <View style={styles.sectionBarActions}>
+            {/* Published by the open panel - see handleSectionActions. */}
+            {sectionActions.map(({ key, icon: Icon, onPress, label, showLabel }) =>
+              showLabel ? (
+                <TouchableOpacity
+                  key={key}
+                  onPress={onPress}
+                  style={styles.sectionBarPill}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                >
+                  <Icon size={15} color={c.primaryText} />
+                  <Text style={styles.sectionBarPillText}>{label}</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  key={key}
+                  onPress={onPress}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                >
+                  <Icon size={20} color={c.textBody} />
+                </TouchableOpacity>
+              ),
+            )}
+
+            {/* Everything that edits the profile lives behind this, so the
+                page itself can stay a read-only summary. */}
+            {activeTab === "profile" && (
+              <TouchableOpacity
+                onPress={() => setProfileAction("manage")}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Manage profile"
+              >
+                <Settings size={20} color={c.textBody} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
 
@@ -500,7 +561,7 @@ const RestaurantDashboard = () => {
           least one government document has an uploaded file. */}
       {showDocumentWarning && (
         <View style={styles.warningBanner}>
-          <AlertTriangle size={20} color="#b45309" />
+          <AlertTriangle size={20} color={c.warning} />
           <Text style={styles.warningText}>
             Upload your government document or your account may be suspended.
           </Text>
@@ -555,8 +616,8 @@ const RestaurantDashboard = () => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={["#ea580c"]}
-              tintColor="#ea580c"
+              colors={[c.primary]}
+              tintColor={c.primary}
             />
           }
         >
@@ -570,13 +631,13 @@ const RestaurantDashboard = () => {
                   activeOpacity={0.7}
                 >
                   <View style={styles.moreIconBox}>
-                    <Icon size={18} color="#ea580c" />
+                    <Icon size={18} color={c.primary} />
                   </View>
                   <View style={styles.moreRowText}>
-                    <Text style={styles.moreRowLabel}>{label}</Text>
-                    <Text style={styles.moreRowHint}>{hint}</Text>
+                    <Text style={styles.moreRowLabel}>{t(label)}</Text>
+                    <Text style={styles.moreRowHint}>{t(hint)}</Text>
                   </View>
-                  <ChevronRight size={18} color="#9ca3af" />
+                  <ChevronRight size={18} color={c.textFaint} />
                 </TouchableOpacity>
               ))}
 
@@ -593,13 +654,13 @@ const RestaurantDashboard = () => {
                     activeOpacity={0.7}
                   >
                     <View style={styles.moreIconBox}>
-                      <Icon size={18} color="#ea580c" />
+                      <Icon size={18} color={c.primary} />
                     </View>
                     <View style={styles.moreRowText}>
-                      <Text style={styles.moreRowLabel}>{label}</Text>
-                      <Text style={styles.moreRowHint}>{hint}</Text>
+                      <Text style={styles.moreRowLabel}>{t(label)}</Text>
+                      <Text style={styles.moreRowHint}>{t(hint)}</Text>
                     </View>
-                    <ChevronRight size={18} color="#9ca3af" />
+                    <ChevronRight size={18} color={c.textFaint} />
                   </TouchableOpacity>
                 ))}
 
@@ -612,20 +673,37 @@ const RestaurantDashboard = () => {
                 activeOpacity={0.7}
               >
                 <View style={[styles.moreIconBox, styles.moreIconBoxLogout]}>
-                  <LogOut size={18} color="#ef4444" />
+                  <LogOut size={18} color={c.danger} />
                 </View>
                 <View style={styles.moreRowText}>
-                  <Text style={[styles.moreRowLabel, styles.moreRowLabelLogout]}>Log Out</Text>
-                  <Text style={styles.moreRowHint}>Sign out of this device</Text>
+                  <Text style={[styles.moreRowLabel, styles.moreRowLabelLogout]}>{t("common.logOut")}</Text>
+                  <Text style={styles.moreRowHint}>{t("common.logOutHint")}</Text>
                 </View>
               </TouchableOpacity>
             </View>
           )}
           {activeTab === "overview" && canAccessTab("overview", { isOwner, can }) && <OverviewManager key={refreshKey} />}
-          {activeTab === "staff" && canAccessTab("staff", { isOwner, can }) && <StaffManager key={refreshKey} />}
-          {activeTab === "marketing" && canAccessTab("marketing", { isOwner, can }) && <HappyHoursManager key={refreshKey} />}
+          {activeTab === "staff" && canAccessTab("staff", { isOwner, can }) && (
+            <StaffManager key={refreshKey} onHeaderActions={handleSectionActions} />
+          )}
+          {activeTab === "marketing" && canAccessTab("marketing", { isOwner, can }) && (
+            <HappyHoursManager
+              key={refreshKey}
+              onHeaderActions={handleSectionActions}
+              onRequestMenuAction={requestMenuAction}
+            />
+          )}
           {activeTab === "qr" && canAccessTab("qr", { isOwner, can }) && <QRManager restaurant={restaurant} key={refreshKey} />}
-          {activeTab === "notifications" && canAccessTab("notifications", { isOwner, can }) && <NotificationManager key={refreshKey} />}
+          {activeTab === "notifications" && canAccessTab("notifications", { isOwner, can }) && (
+            <NotificationManager key={refreshKey} onHeaderActions={handleSectionActions} />
+          )}
+          {activeTab === "support" && canAccessTab("support", { isOwner, can }) && (
+            <SupportTicketManager
+              key={refreshKey}
+              onHeaderActions={handleSectionActions}
+              onSubScreenChange={handleSubScreenChange}
+            />
+          )}
           {/* Profile Details now owns everything about the RESTAURANT -
               basic details, locations, logo, login email, password and
               government documents. That is what SettingsManager has always
@@ -669,9 +747,9 @@ const RestaurantDashboard = () => {
               onPress={() => goToTab(id)}
               activeOpacity={0.7}
             >
-              <Icon size={20} color={isActive ? "#ea580c" : "#9ca3af"} />
+              <Icon size={20} color={isActive ? c.primary : c.textFaint} />
               <Text style={[styles.bottomTabLabel, isActive && styles.bottomTabLabelActive]}>
-                {label}
+                {t(label)}
               </Text>
             </TouchableOpacity>
           );
@@ -682,21 +760,22 @@ const RestaurantDashboard = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   loadingContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f9fafb",
+    backgroundColor: c.bg,
   },
   loadingText: {
     marginTop: 12,
-    color: "#6b7280",
+    color: c.textMuted,
     fontWeight: "600",
   },
   container: {
     flex: 1,
-    backgroundColor: "#ffffff", 
+    backgroundColor: c.surface, 
   },
   
   // Header Styles
@@ -707,9 +786,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#ffffff",
+    backgroundColor: c.surface,
     borderBottomWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: c.divider,
   },
   // The back half is its own touchable so the tap target covers the arrow and
   // the title together, without swallowing the action on the right.
@@ -719,10 +798,21 @@ const styles = StyleSheet.create({
     gap: 10,
     flex: 1,
   },
+  sectionBarActions: { flexDirection: "row", alignItems: "center", gap: 14 },
+  sectionBarPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: c.primary,
+  },
+  sectionBarPillText: { fontSize: 12, fontWeight: "800", color: c.primaryText },
   sectionBarText: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#1f2937",
+    color: c.text,
   },
 
   // The More page: a list of the sections that have no bottom-bar slot.
@@ -734,10 +824,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    backgroundColor: "#ffffff",
+    backgroundColor: c.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: c.divider,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
@@ -745,7 +835,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#fff7ed",
+    backgroundColor: c.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -753,29 +843,29 @@ const styles = StyleSheet.create({
   moreRowLabel: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#1f2937",
+    color: c.text,
   },
   moreRowHint: {
     fontSize: 12,
-    color: "#6b7280",
+    color: c.textMuted,
     marginTop: 2,
   },
   moreRowLogout: {
     marginTop: 6,
-    borderColor: "#fee2e2",
+    borderColor: c.dangerSoft,
   },
   moreIconBoxLogout: {
-    backgroundColor: "#fef2f2",
+    backgroundColor: c.dangerSoft,
   },
   moreRowLabelLogout: {
-    color: "#ef4444",
+    color: c.danger,
   },
 
   bottomBar: {
     flexDirection: "row",
-    backgroundColor: "#ffffff",
+    backgroundColor: c.surface,
     borderTopWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: c.divider,
     paddingTop: 8,
     paddingBottom: 8,
   },
@@ -788,15 +878,15 @@ const styles = StyleSheet.create({
   bottomTabLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#9ca3af",
+    color: c.textFaint,
   },
   bottomTabLabelActive: {
-    color: "#ea580c",
+    color: c.primary,
   },
 
   mainContent: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: c.bg,
   },
 
   // Document Warning Banner
@@ -804,9 +894,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#fffbeb",
+    backgroundColor: c.warningSoft,
     borderBottomWidth: 1,
-    borderColor: "#fde68a",
+    borderColor: c.warningSoft,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
@@ -814,19 +904,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: "600",
-    color: "#92400e",
+    color: c.warning,
   },
   warningBtn: {
-    backgroundColor: "#d97706",
+    backgroundColor: c.warning,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   warningBtnText: {
-    color: "#fff",
+    color: c.primaryText,
     fontWeight: "bold",
     fontSize: 12,
   },
-});
+  });
 
 export default RestaurantDashboard;

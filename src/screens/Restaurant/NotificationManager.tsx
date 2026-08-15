@@ -1,8 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { useDispatch } from "react-redux";
 import Toast from "react-native-toast-message";
-import { Bell, CheckCircle2, Info, ShoppingBag, ShieldAlert, ShieldCheck, Trash2, Check } from "lucide-react-native";
+import {
+  Bell,
+  Info,
+  ShoppingBag,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  Check,
+  CheckCheck,
+  RefreshCw,
+} from "lucide-react-native";
 
 import {
   getRestaurantNotifications,
@@ -12,6 +22,7 @@ import {
   deleteAllNotifications,
 } from "../../API/notificationApi";
 import CustomModal from "../../components/CustomModal";
+import type { HeaderAction } from "../../components/Header";
 import { SkeletonBlock } from "../../components/Skeleton";
 import SectionError from "../../components/SectionError";
 import { setHasUnread } from "../../Features/NotificationSlice";
@@ -33,12 +44,20 @@ const ICONS: Record<string, { Icon: any; color: string }> = {
   ACCOUNT_REJECTED: { Icon: ShieldAlert, color: "#dc2626" },
 };
 
-const NotificationManager = () => {
+type NotificationManagerProps = {
+  // Lets this panel put its controls in the dashboard's section bar. It owns
+  // the counts those buttons depend on, so it decides what to publish.
+  onHeaderActions?: (actions: HeaderAction[]) => void;
+};
+
+const NotificationManager = ({ onHeaderActions }: NotificationManagerProps) => {
   const dispatch = useDispatch();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   const fetchNotifs = async () => {
     try {
@@ -101,6 +120,59 @@ const NotificationManager = () => {
     }
   };
 
+  // Held in a ref so the effect below can depend only on the counts. Without
+  // it the handlers change identity every render, the effect re-runs, and it
+  // publishes a new array each time - which re-renders the dashboard, which
+  // re-renders this, forever.
+  const handlersRef = useRef({
+    refresh: () => {},
+    markAll: () => {},
+    clear: () => {},
+  });
+  handlersRef.current = {
+    refresh: fetchNotifs,
+    markAll: handleMarkAllRead,
+    clear: () => setClearModalOpen(true),
+  };
+
+  useEffect(() => {
+    // Refresh is always offered - an empty list is exactly when someone wants
+    // to check again. The other two only exist when there is something to act
+    // on, and "mark all read" additionally goes when everything is already read.
+    const actions: HeaderAction[] = [
+      {
+        key: "refresh",
+        icon: RefreshCw,
+        label: "Refresh",
+        onPress: () => handlersRef.current.refresh(),
+      },
+    ];
+
+    if (notifications.length > 0 && unreadCount > 0) {
+      actions.push({
+        key: "read-all",
+        icon: CheckCheck,
+        label: "Mark all as read",
+        onPress: () => handlersRef.current.markAll(),
+      });
+    }
+
+    if (notifications.length > 0) {
+      actions.push({
+        key: "clear-all",
+        icon: Trash2,
+        label: "Delete all",
+        onPress: () => handlersRef.current.clear(),
+      });
+    }
+
+    onHeaderActions?.(actions);
+  }, [notifications.length, unreadCount, onHeaderActions]);
+
+  // Leaving the section must take the buttons with it, or they would sit in
+  // the bar of whatever opens next.
+  useEffect(() => () => onHeaderActions?.([]), [onHeaderActions]);
+
   const confirmClearAll = async () => {
     setClearModalOpen(false);
     try {
@@ -139,31 +211,22 @@ const NotificationManager = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
+      {/* <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Notifications</Text>
           <Text style={styles.subtitle}>Stay updated on your restaurant's latest activity.</Text>
         </View>
-      </View>
+      </View> */}
 
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          onPress={handleMarkAllRead}
-          disabled={notifications.length === 0}
-          style={[styles.actionBtn, notifications.length === 0 && styles.actionBtnDisabled]}
-        >
-          <CheckCircle2 size={15} color="#16a34a" />
-          <Text style={styles.actionBtnText}>Mark all read</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => notifications.length > 0 && setClearModalOpen(true)}
-          disabled={notifications.length === 0}
-          style={[styles.actionBtn, styles.actionBtnDanger, notifications.length === 0 && styles.actionBtnDisabled]}
-        >
-          <Trash2 size={15} color="#dc2626" />
-          <Text style={[styles.actionBtnText, { color: "#dc2626" }]}>Clear all</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Refresh / mark-all-read / delete-all now live in the section bar
+          above (published via onHeaderActions), so only the count remains
+          here - the one piece of information rather than a second control
+          strip stacked under the first. */}
+      {notifications.length > 0 && (
+        <Text style={styles.unreadSummary}>
+          {unreadCount > 0 ? `${unreadCount} unread` : `All caught up · ${notifications.length}`}
+        </Text>
+      )}
 
       {loadError && notifications.length === 0 ? (
         <View style={styles.emptyState}>
@@ -171,10 +234,15 @@ const NotificationManager = () => {
         </View>
       ) : notifications.length === 0 ? (
         <View style={styles.emptyState}>
-          <Bell size={40} color="#d1d5db" style={{ marginBottom: 12 }} />
-          <Text style={styles.emptyTitle}>No notifications yet</Text>
+          <View style={styles.emptyIconRing}>
+            <View style={styles.emptyIconCircle}>
+              <Bell size={30} color="#ea580c" />
+            </View>
+          </View>
+          <Text style={styles.emptyTitle}>You're all caught up</Text>
           <Text style={styles.emptySubtitle}>
-            When you receive new orders or account updates, they'll appear here.
+            New orders and account updates land here as they happen. Nothing needs your
+            attention right now.
           </Text>
         </View>
       ) : (
@@ -187,33 +255,59 @@ const NotificationManager = () => {
                 <View style={[styles.notifIconBox, { backgroundColor: `${meta.color}1A` }]}>
                   <Icon size={18} color={meta.color} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.notifBody}>
+                  {/* Title and time share a line: the timestamp is reference
+                      information, not a third stacked paragraph, and putting
+                      it right keeps the left edge clean down the whole list. */}
                   <View style={styles.notifTopRow}>
-                    <Text style={[styles.notifTitle, !notif.isRead && styles.notifTitleUnread]} numberOfLines={1}>
+                    {!notif.isRead && <View style={styles.unreadDot} />}
+                    <Text
+                      style={[styles.notifTitle, !notif.isRead && styles.notifTitleUnread]}
+                      numberOfLines={1}
+                    >
                       {notif.title}
                     </Text>
-                    {!notif.isRead && <View style={styles.unreadDot} />}
+                    <Text style={styles.notifDate}>
+                      {new Date(notif.createdAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
                   </View>
+
                   <Text style={styles.notifMessage}>{notif.message}</Text>
-                  <Text style={styles.notifDate}>
-                    {new Date(notif.createdAt).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </Text>
-                  <View style={styles.notifActions}>
-                    {!notif.isRead && (
-                      <TouchableOpacity onPress={() => handleMarkSingleRead(notif._id)} style={styles.notifActionBtn}>
-                        <Check size={13} color="#16a34a" />
-                        <Text style={[styles.notifActionText, { color: "#16a34a" }]}>Mark read</Text>
+
+                  <View style={styles.notifFooter}>
+                    <Text style={styles.notifTime}>
+                      {new Date(notif.createdAt).toLocaleTimeString(undefined, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+
+                    {/* Icon-only, pushed right. Two labelled text buttons under
+                        every row turned the list into a wall of repeated
+                        words; the icons carry the same meaning at a glance. */}
+                    <View style={styles.notifActions}>
+                      {!notif.isRead && (
+                        <TouchableOpacity
+                          onPress={() => handleMarkSingleRead(notif._id)}
+                          style={styles.notifActionBtn}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel="Mark as read"
+                        >
+                          <Check size={15} color="#16a34a" />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => handleDeleteSingle(notif._id)}
+                        style={[styles.notifActionBtn, styles.notifActionBtnDanger]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel="Delete notification"
+                      >
+                        <Trash2 size={15} color="#dc2626" />
                       </TouchableOpacity>
-                    )}
-                    <TouchableOpacity onPress={() => handleDeleteSingle(notif._id)} style={styles.notifActionBtn}>
-                      <Trash2 size={13} color="#dc2626" />
-                      <Text style={[styles.notifActionText, { color: "#dc2626" }]}>Delete</Text>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -242,29 +336,81 @@ const styles = StyleSheet.create({
   headerRow: { padding: 16, paddingBottom: 8 },
   title: { fontSize: 24, fontWeight: "900", color: "#111827" },
   subtitle: { fontSize: 12, color: "#6b7280", fontWeight: "500", marginTop: 4 },
-  actionsRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 8 },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e5e7eb", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
-  actionBtnDanger: { borderColor: "#fecaca" },
-  actionBtnDisabled: { opacity: 0.5 },
-  actionBtnText: { fontSize: 12, fontWeight: "700", color: "#16a34a" },
+  unreadSummary: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#9ca3af",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
 
-  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 60, marginHorizontal: 16, backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6" },
-  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#1f2937" },
-  emptySubtitle: { fontSize: 13, color: "#6b7280", textAlign: "center", marginTop: 6, paddingHorizontal: 24 },
+  // Unboxed and vertically centred, matching every other empty state.
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  emptyIconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#fff7ed",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#ffedd5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#1f2937" },
+  emptySubtitle: { fontSize: 13, lineHeight: 20, color: "#6b7280", textAlign: "center", marginTop: 8 },
 
-  list: { padding: 16, gap: 10 },
-  notifCard: { flexDirection: "row", gap: 12, backgroundColor: "#ffffff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#f3f4f6" },
-  notifCardUnread: { backgroundColor: "#fff7ed", borderColor: "#fed7aa" },
+  list: { padding: 16, paddingTop: 0, gap: 10, paddingBottom: 32 },
+  notifCard: {
+    flexDirection: "row",
+    gap: 12,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  // Unread keeps the white card but gains a coloured left edge - the old
+  // full orange fill made a busy day look like one solid orange block.
+  notifCardUnread: { borderLeftWidth: 3, borderLeftColor: "#ea580c" },
   notifIconBox: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  notifTopRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  notifTitle: { fontSize: 13, fontWeight: "700", color: "#6b7280", flexShrink: 1 },
+  notifBody: { flex: 1 },
+  notifTopRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  notifTitle: { flex: 1, fontSize: 13, fontWeight: "700", color: "#6b7280" },
   notifTitleUnread: { color: "#1f2937", fontWeight: "800" },
   unreadDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#ea580c" },
-  notifMessage: { fontSize: 12, color: "#6b7280", marginTop: 4, lineHeight: 17 },
-  notifDate: { fontSize: 10, color: "#9ca3af", fontWeight: "600", marginTop: 6 },
-  notifActions: { flexDirection: "row", gap: 14, marginTop: 8 },
-  notifActionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-  notifActionText: { fontSize: 11, fontWeight: "700" },
+  notifDate: { fontSize: 10, color: "#9ca3af", fontWeight: "700" },
+  notifMessage: { fontSize: 12, color: "#6b7280", marginTop: 5, lineHeight: 17 },
+  notifFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
+  notifTime: { fontSize: 10, color: "#b8bec9", fontWeight: "700" },
+  notifActions: { flexDirection: "row", gap: 8 },
+  notifActionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f0fdf4",
+  },
+  notifActionBtnDanger: { backgroundColor: "#fef2f2" },
 });
 
 export default NotificationManager;

@@ -50,6 +50,7 @@ import {
   updateRestaurantEmail,
   changeRestaurantPassword,
   uploadRestaurantLogo,
+  deleteRestaurantLogo,
   addRestaurantDocument,
   updateRestaurantDocument,
   deleteRestaurantDocument,
@@ -416,6 +417,30 @@ const SettingsManager = ({
     } finally {
       setSavingLogo(false);
     }
+  };
+
+  const removeLogo = async () => {
+    setSavingLogo(true);
+    try {
+      await deleteRestaurantLogo();
+      setLogoUrl(null);
+      Toast.show({ type: "success", text1: "Logo removed" });
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: error?.response?.data?.message || "Failed to remove logo" });
+    } finally {
+      setSavingLogo(false);
+    }
+  };
+
+  const confirmRemoveLogo = () => {
+    setLogoMenuOpen(false);
+    setConfirmState({
+      title: "Remove logo?",
+      message:
+        "Your menu page will fall back to showing the first letter of your restaurant's name until you upload a new one.",
+      confirmText: "Remove logo",
+      onConfirm: removeLogo,
+    });
   };
 
   const openAddAddress = () => {
@@ -1113,21 +1138,17 @@ const SettingsManager = ({
               </View>
             </TouchableOpacity>
 
+            {/* No "View logo" row: tapping the avatar itself already opens the
+                full-size preview, so this would have been a second door onto
+                the same thing. */}
             {logoUrl ? (
-              <TouchableOpacity
-                style={styles.sheetRow}
-                onPress={() => {
-                  setLogoMenuOpen(false);
-                  setIsLogoPreviewOpen(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.rowIcon}>
-                  <Eye size={17} color="#ea580c" />
+              <TouchableOpacity style={styles.sheetRow} onPress={confirmRemoveLogo} activeOpacity={0.7}>
+                <View style={[styles.rowIcon, styles.rowIconDanger]}>
+                  <Trash2 size={17} color="#ef4444" />
                 </View>
                 <View style={styles.rowText}>
-                  <Text style={styles.rowLabel}>View logo</Text>
-                  <Text style={styles.rowHint}>See it full size</Text>
+                  <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Remove logo</Text>
+                  <Text style={styles.rowHint}>Fall back to the name's initial</Text>
                 </View>
               </TouchableOpacity>
             ) : null}
@@ -1237,8 +1258,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  rowIconDanger: { backgroundColor: "#fef2f2" },
   rowText: { flex: 1 },
   rowLabel: { fontSize: 15, fontWeight: "700", color: "#1f2937" },
+  rowLabelDanger: { color: "#ef4444" },
   rowHint: { fontSize: 12, color: "#6b7280", marginTop: 2 },
   rowValue: { fontSize: 13, color: "#4b5563", marginTop: 2, fontWeight: "600" },
   rowValueEmpty: { color: "#b8bec9", fontWeight: "500", fontStyle: "italic" },

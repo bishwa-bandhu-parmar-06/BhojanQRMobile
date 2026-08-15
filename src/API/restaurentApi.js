@@ -99,6 +99,12 @@ export const changeRestaurantPassword = (currentPassword, newPassword) => {
   return api.put(`${BASE_URL}/change-password`, { currentPassword, newPassword });
 };
 
+// Clears logoUrl and drops the Cloudinary asset. Idempotent server-side, so
+// calling it when there is already no logo succeeds rather than 404-ing.
+export const deleteRestaurantLogo = () => {
+  return api.delete(`${BASE_URL}/logo`);
+};
+
 export const uploadRestaurantLogo = formData => {
   return api.post(`${BASE_URL}/upload-logo`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

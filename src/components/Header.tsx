@@ -6,12 +6,19 @@ import { Bell } from 'lucide-react-native';
 import { getRestaurantNotifications } from '../API/notificationApi';
 import { setHasUnread, markUnreadArrived } from '../Features/NotificationSlice';
 import { socket } from '../utils/socket';
+import { playOrderAlert } from '../utils/alerts';
+import { useThemeColors, useThemedStyles, type ThemeColors } from '../theme';
 
 export interface HeaderAction {
   key: string;
   icon: React.ComponentType<any>;
   onPress: () => void;
   label: string;
+  // Renders as a filled pill carrying the label rather than a bare icon.
+  // For the one primary action on a screen, where an unlabelled icon would
+  // leave people guessing. Honoured by the dashboard's section bar; the app
+  // header always draws icons, since its corner has no room for a pill.
+  showLabel?: boolean;
 }
 
 interface HeaderProps {
@@ -30,9 +37,15 @@ interface HeaderProps {
 
 const Header = ({ title, onBellPress, actions }: HeaderProps) => {
   const dispatch = useDispatch();
+  const c = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
 
   const user = useSelector((state: any) => state.auth?.user);
   const hasUnread = useSelector((state: any) => state.notifications?.hasUnread);
+  // App Settings' two alert switches. Read here because this is where the
+  // socket event that represents "a new order landed" is already handled.
+  const orderAlerts = useSelector((state: any) => state.preferences?.orderAlerts);
+  const alertSound = useSelector((state: any) => state.preferences?.alertSound);
 
   // /notifications is restaurant-scoped (owner or staff); an admin would only
   // collect a 403. Paired with onBellPress so the badge is only maintained
@@ -47,8 +60,13 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
     let cancelled = false;
 
     // Seed from the real list so the badge is right on a cold start, not just
-    // reactive to events that happen while the app is open.
+    // reactive to events that happen while the app is open. Skipped entirely
+    // when order alerts are off - there is no badge to be right about.
     (async () => {
+      if (!orderAlerts) {
+        dispatch(setHasUnread(false));
+        return;
+      }
       try {
         const res = await getRestaurantNotifications();
         const list = res.data?.data || [];
@@ -63,14 +81,20 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
 
     // The server writes a Notification for the restaurant and emits into its
     // room at the same moment, so this event means there is something new.
-    const onOrderActivity = () => dispatch(markUnreadArrived());
+    const onOrderActivity = () => {
+      if (!orderAlerts) return;
+      dispatch(markUnreadArrived());
+      // The two switches are independent on purpose: a kitchen wants the
+      // noise, a manager on the floor usually wants only the badge.
+      if (alertSound) playOrderAlert();
+    };
     socket.on('order:status-changed', onOrderActivity);
 
     return () => {
       cancelled = true;
       socket.off('order:status-changed', onOrderActivity);
     };
-  }, [showBell, dispatch]);
+  }, [showBell, dispatch, orderAlerts, alertSound]);
 
   return (
     <View style={styles.headerContainer}>
@@ -101,7 +125,7 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
               accessibilityRole="button"
               accessibilityLabel={label}
             >
-              <Icon size={22} color="#374151" />
+              <Icon size={22} color={c.textBody} />
             </TouchableOpacity>
           ))}
 
@@ -112,8 +136,8 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
             accessibilityRole="button"
             accessibilityLabel={hasUnread ? 'Notifications, unread' : 'Notifications'}
           >
-            <Bell size={22} color="#374151" />
-            {hasUnread && <View style={styles.badge} />}
+            <Bell size={22} color={c.textBody} />
+            {hasUnread && orderAlerts && <View style={styles.badge} />}
           </TouchableOpacity>
         )}
       </View>
@@ -123,42 +147,43 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
 
 export default Header;
 
-const styles = StyleSheet.create({
-  headerContainer: {
-    height: 55,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 15,
-  },
-  spacer: { flex: 1 },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-  },
-  logoImage: {
-    width: 38,
-    height: 38,
-  },
-  title: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1f2937',
-  },
-  badge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#ef4444',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    headerContainer: {
+      height: 55,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      paddingHorizontal: 15,
+    },
+    spacer: { flex: 1 },
+    actions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 18,
+    },
+    logoImage: {
+      width: 38,
+      height: 38,
+    },
+    title: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      textAlign: 'center',
+      fontSize: 18,
+      fontWeight: '800',
+      color: c.text,
+    },
+    badge: {
+      position: 'absolute',
+      top: -2,
+      right: -2,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: c.danger,
+      borderWidth: 2,
+      borderColor: c.surface,
+    },
+  });

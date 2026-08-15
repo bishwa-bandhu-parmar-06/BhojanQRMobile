@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import {
 import { getStaffList, getStaffRoles, createStaff, updateStaff, deleteStaff, toggleStaffStatus } from "../../API/staffApi";
 import { PERMISSIONS, PERMISSION_LABELS, STAFF_ROLES, DEFAULT_ROLE_PERMISSIONS, Permission } from "../../constants/permissions";
 import CustomModal from "../../components/CustomModal";
+import type { HeaderAction } from "../../components/Header";
 import { SkeletonBlock } from "../../components/Skeleton";
 
 interface StaffMember {
@@ -53,7 +54,24 @@ const EMPTY_FORM = {
   isActive: true,
 };
 
-const StaffManager = () => {
+type StaffFilter = "all" | "active" | "inactive";
+
+// Filtering is client-side: the staff list is a handful of people already
+// loaded in full, so a round trip per filter tap would be slower and no more
+// correct. No backend change is needed for this - `isActive` already ships
+// on every staff record.
+const STAFF_FILTERS: { id: StaffFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "active", label: "Active" },
+  { id: "inactive", label: "Inactive" },
+];
+
+type StaffManagerProps = {
+  // Puts this panel's controls in the dashboard's section bar.
+  onHeaderActions?: (actions: HeaderAction[]) => void;
+};
+
+const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [roles, setRoles] = useState<string[]>([...STAFF_ROLES]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +84,7 @@ const StaffManager = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetchStaff = async () => {
     try {
@@ -88,6 +107,14 @@ const StaffManager = () => {
       .catch(() => {});
   }, []);
 
+  const [statusFilter, setStatusFilter] = useState<StaffFilter>("all");
+
+  const activeCount = staff.filter((m) => m.isActive).length;
+  const visibleStaff =
+    statusFilter === "all"
+      ? staff
+      : staff.filter((m) => (statusFilter === "active" ? m.isActive : !m.isActive));
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchStaff();
@@ -98,6 +125,38 @@ const StaffManager = () => {
     setForm(EMPTY_FORM);
     setIsModalOpen(true);
   };
+
+  // Handlers in a ref so the publishing effect below has no reactive deps at
+  // all. Depending on the handlers directly would re-run it every render,
+  // publishing a fresh array each time and bouncing renders between this
+  // panel and the dashboard indefinitely.
+  const handlersRef = useRef({ refresh: () => {}, add: () => {} });
+  handlersRef.current = { refresh: handleRefresh, add: openAddModal };
+
+  // Both are always offered: refreshing an empty team is reasonable, and
+  // adding the first member is the whole point of an empty one.
+  useEffect(() => {
+    onHeaderActions?.([
+      {
+        key: "refresh",
+        icon: RefreshCw,
+        label: "Refresh",
+        onPress: () => handlersRef.current.refresh(),
+      },
+      {
+        key: "add-staff",
+        icon: UserPlus,
+        label: "Add staff",
+        // Labelled pill, not a bare icon: this is the primary action on the
+        // screen and it no longer has a copy in the page to fall back on.
+        showLabel: true,
+        onPress: () => handlersRef.current.add(),
+      },
+    ]);
+  }, [onHeaderActions]);
+
+  // Leaving the section takes the buttons with it.
+  useEffect(() => () => onHeaderActions?.([]), [onHeaderActions]);
 
   const openEditModal = (member: StaffMember) => {
     setEditingStaff(member);
@@ -182,12 +241,38 @@ const StaffManager = () => {
     }
   };
 
-  const handleToggleStatus = async (id: string) => {
+  // Flips isActive on the server (PATCH /staff/:id/status) and reflects it
+  // immediately, rather than waiting on a full list refetch - a switch that
+  // does not move until a round trip completes feels broken.
+  //
+  // On failure the row is put back exactly as it was, so the switch can never
+  // show a state the server does not agree with.
+  const handleToggleStatus = async (member: StaffMember) => {
+    const id = member._id;
+    if (togglingId) return; // one at a time; the list is small
+
+    const next = !member.isActive;
+    setTogglingId(id);
+    setStaff((prev) => prev.map((m) => (m._id === id ? { ...m, isActive: next } : m)));
+
     try {
-      await toggleStaffStatus(id);
-      fetchStaff();
+      const res = await toggleStaffStatus(id);
+      // Trust the server's copy over the guess where it is available - the
+      // endpoint returns the updated record.
+      const updated = res?.data?.data;
+      if (updated) {
+        setStaff((prev) => prev.map((m) => (m._id === id ? { ...m, ...updated } : m)));
+      }
+      Toast.show({
+        type: "success",
+        text1: next ? `${member.name} can sign in` : `${member.name} is disabled`,
+        text2: next ? undefined : "Their session ends on the next request",
+      });
     } catch {
+      setStaff((prev) => prev.map((m) => (m._id === id ? { ...m, isActive: !next } : m)));
       Toast.show({ type: "error", text1: "Failed to update status" });
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -218,85 +303,188 @@ const StaffManager = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        {/* <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Manage Staff</Text>
-          <Text style={styles.subtitle}>Add staff and control exactly what they can access.</Text>
-        </View> */}
-        <TouchableOpacity onPress={handleRefresh} disabled={isRefreshing} style={styles.refreshBtn}>
-          <RefreshCw size={16} color="#ea580c" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={openAddModal} style={styles.addBtn}>
-          <UserPlus size={16} color="#fff" />
-          <Text style={styles.addBtnText}>Add</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Both Add staff and Refresh now live in the section bar, so the page
+          leads with the filter instead of a second copy of those controls. */}
+      {staff.length > 0 && (
+        <View style={styles.filterRow}>
+          {STAFF_FILTERS.map(({ id, label }) => {
+            const isActive = statusFilter === id;
+            const count =
+              id === "all"
+                ? staff.length
+                : id === "active"
+                ? activeCount
+                : staff.length - activeCount;
+            return (
+              <TouchableOpacity
+                key={id}
+                onPress={() => setStatusFilter(id)}
+                style={[styles.filterPill, isActive && styles.filterPillActive]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                  {label}
+                </Text>
+                <View style={[styles.filterCount, isActive && styles.filterCountActive]}>
+                  <Text style={[styles.filterCountText, isActive && styles.filterCountTextActive]}>
+                    {count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       {staff.length === 0 ? (
         <View style={styles.emptyState}>
-          <Users size={40} color="#ea580c" style={{ marginBottom: 12 }} />
-          <Text style={styles.emptyTitle}>No staff members yet</Text>
+          <View style={styles.emptyIconRing}>
+            <View style={styles.emptyIconCircle}>
+              <Users size={30} color="#ea580c" />
+            </View>
+          </View>
+          <Text style={styles.emptyTitle}>No staff yet</Text>
           <Text style={styles.emptySubtitle}>
-            Add your managers, waiters, and chefs and decide exactly what each one can do.
+            Add your managers, waiters and chefs, and choose exactly what each one can see
+            and do in the dashboard.
           </Text>
+          <TouchableOpacity style={styles.emptyCta} onPress={openAddModal} activeOpacity={0.85}>
+            <UserPlus size={16} color="#fff" />
+            <Text style={styles.emptyCtaText}>Add your first staff member</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}>
-          {staff.map((member) => (
-            <View key={member._id} style={styles.staffCard}>
-              <View style={styles.staffCardTop}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.staffName}>{member.name}</Text>
-                  <Text style={styles.staffEmail}>{member.email}</Text>
-                </View>
-                <View style={[styles.roleBadge, { borderColor: ROLE_BADGE_COLORS[member.staffRole] || "#9ca3af" }]}>
-                  <Text style={[styles.roleBadgeText, { color: ROLE_BADGE_COLORS[member.staffRole] || "#6b7280" }]}>
-                    {member.staffRole}
-                  </Text>
-                </View>
-              </View>
+          {/* A one-line read on the team before any individual card - the
+              number that matters day to day is how many can currently log in. */}
+          {/* Doubles as feedback for the section bar's refresh icon, which is
+              too small to hold a spinner of its own. */}
+          <Text style={styles.listSummary}>
+            {isRefreshing ? "Refreshing…" : `${activeCount} of ${staff.length} active`}
+          </Text>
 
-              <TouchableOpacity
-                onPress={() => handleToggleStatus(member._id)}
-                style={[styles.statusBadge, member.isActive ? styles.statusActive : styles.statusDisabled]}
-              >
-                {member.isActive ? <ShieldCheck size={13} color="#16a34a" /> : <ShieldOff size={13} color="#dc2626" />}
-                <Text style={[styles.statusText, { color: member.isActive ? "#16a34a" : "#dc2626" }]}>
-                  {member.isActive ? "Active" : "Disabled"}
-                </Text>
-              </TouchableOpacity>
-
-              <Text style={styles.permsText} numberOfLines={2}>
-                {member.permissions?.length
-                  ? member.permissions.map((p) => PERMISSION_LABELS[p] || p).join(", ")
-                  : "No permissions granted"}
+          {/* A filter matching nobody is not the same as having no staff, so
+              it says so rather than reusing the "no staff yet" screen. */}
+          {visibleStaff.length === 0 && (
+            <View style={styles.filterEmpty}>
+              <Text style={styles.filterEmptyText}>
+                No {statusFilter} staff members
               </Text>
-
-              <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => openEditModal(member)} style={styles.cardActionBtn}>
-                  <Pencil size={14} color="#ea580c" />
-                  <Text style={styles.cardActionText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setDeleteTarget(member._id)}
-                  disabled={deletingId === member._id}
-                  style={[styles.cardActionBtn, styles.cardActionDanger]}
-                >
-                  {deletingId === member._id ? (
-                    <>
-                      <ActivityIndicator size="small" color="#dc2626" />
-                      <Text style={[styles.cardActionText, { color: "#dc2626" }]}>Removing...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={14} color="#dc2626" />
-                      <Text style={[styles.cardActionText, { color: "#dc2626" }]}>Remove</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity onPress={() => setStatusFilter("all")} activeOpacity={0.75}>
+                <Text style={styles.filterEmptyLink}>Show all</Text>
+              </TouchableOpacity>
             </View>
-          ))}
+          )}
+
+          {visibleStaff.map((member) => {
+            const roleColor = ROLE_BADGE_COLORS[member.staffRole] || "#6b7280";
+            const permCount = member.permissions?.length || 0;
+            return (
+              <View key={member._id} style={styles.staffCard}>
+                {/* Identity row: initial, name, email, role. The monogram gives
+                    each person a fixed anchor so a long list stays scannable. */}
+                <View style={styles.staffTop}>
+                  <View style={[styles.avatar, { backgroundColor: `${roleColor}1A` }]}>
+                    <Text style={[styles.avatarText, { color: roleColor }]}>
+                      {(member.name || "?").trim().charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.staffIdentity}>
+                    <Text style={styles.staffName} numberOfLines={1}>
+                      {member.name}
+                    </Text>
+                    <Text style={styles.staffEmail} numberOfLines={1}>
+                      {member.email}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.roleBadge, { backgroundColor: `${roleColor}14`, borderColor: `${roleColor}33` }]}>
+                    <Text style={[styles.roleBadgeText, { color: roleColor }]}>{member.staffRole}</Text>
+                  </View>
+                </View>
+
+                {/* An actual Switch rather than a tappable badge. The pill it
+                    replaced looked like a status label, so the fact that it
+                    also disabled someone's login was not discoverable. */}
+                <View style={styles.accessRow}>
+                  <View style={styles.accessText}>
+                    <View style={styles.accessTitleRow}>
+                      {member.isActive ? (
+                        <ShieldCheck size={13} color="#16a34a" />
+                      ) : (
+                        <ShieldOff size={13} color="#dc2626" />
+                      )}
+                      <Text
+                        style={[
+                          styles.statusText,
+                          member.isActive ? styles.statusTextOn : styles.statusTextOff,
+                        ]}
+                      >
+                        {member.isActive ? "Can sign in" : "Sign-in disabled"}
+                      </Text>
+                    </View>
+                    <Text style={styles.permCount}>
+                      {permCount === 0
+                        ? "No permissions"
+                        : `${permCount} permission${permCount === 1 ? "" : "s"}`}
+                    </Text>
+                  </View>
+
+                  {togglingId === member._id ? (
+                    <ActivityIndicator size="small" color="#ea580c" />
+                  ) : (
+                    <Switch
+                      value={member.isActive}
+                      onValueChange={() => handleToggleStatus(member)}
+                      // Any row mid-request locks the rest, so two overlapping
+                      // writes cannot land out of order.
+                      disabled={!!togglingId}
+                      trackColor={{ false: "#e5e7eb", true: "#bbf7d0" }}
+                      thumbColor={member.isActive ? "#16a34a" : "#f9fafb"}
+                    />
+                  )}
+                </View>
+
+                {permCount > 0 && (
+                  <View style={styles.permChips}>
+                    {member.permissions.slice(0, 3).map((p) => (
+                      <View key={p} style={styles.permChip}>
+                        <Text style={styles.permChipText}>{PERMISSION_LABELS[p] || p}</Text>
+                      </View>
+                    ))}
+                    {permCount > 3 && (
+                      <View style={styles.permChip}>
+                        <Text style={styles.permChipText}>+{permCount - 3} more</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <View style={styles.cardActions}>
+                  <TouchableOpacity onPress={() => openEditModal(member)} style={styles.cardActionBtn} activeOpacity={0.75}>
+                    <Pencil size={14} color="#ea580c" />
+                    <Text style={styles.cardActionText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setDeleteTarget(member._id)}
+                    disabled={deletingId === member._id}
+                    style={[styles.cardActionBtn, styles.cardActionDanger]}
+                    activeOpacity={0.75}
+                  >
+                    {deletingId === member._id ? (
+                      <ActivityIndicator size="small" color="#dc2626" />
+                    ) : (
+                      <Trash2 size={14} color="#dc2626" />
+                    )}
+                    <Text style={[styles.cardActionText, styles.cardActionTextDanger]}>
+                      {deletingId === member._id ? "Removing…" : "Remove"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
         </ScrollView>
       )}
 
@@ -431,30 +619,164 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "flex-end", padding: 16, gap: 8 },
   title: { fontSize: 24, fontWeight: "900", color: "#111827" },
   subtitle: { fontSize: 12, color: "#6b7280", fontWeight: "500", marginTop: 4 },
-  refreshBtn: { padding: 10, backgroundColor: "#fff7ed", borderRadius: 10 },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#ea580c", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
-  addBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  // refreshBtn / addBtn / addBtnText removed with the in-page controls -
+  // both actions live in the section bar now.
 
-  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 60, marginHorizontal: 16, backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6" },
-  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#1f2937" },
-  emptySubtitle: { fontSize: 13, color: "#6b7280", textAlign: "center", marginTop: 6, paddingHorizontal: 24 },
+  // Unboxed and centred, matching every other empty state in the dashboard.
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  emptyIconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#fff7ed",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#ffedd5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#1f2937" },
+  emptySubtitle: { fontSize: 13, lineHeight: 20, color: "#6b7280", textAlign: "center", marginTop: 8 },
+  emptyCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 22,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: "#ea580c",
+  },
+  emptyCtaText: { fontSize: 14, fontWeight: "800", color: "#ffffff" },
 
-  list: { padding: 16, gap: 12 },
-  staffCard: { backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", padding: 14 },
-  staffCardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 },
+  filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingTop: 14 },
+  filterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    height: 34,
+    paddingHorizontal: 13,
+    borderRadius: 17,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  filterPillActive: { backgroundColor: "#ea580c", borderColor: "#ea580c" },
+  filterPillText: { fontSize: 12, fontWeight: "800", color: "#4b5563" },
+  filterPillTextActive: { color: "#ffffff" },
+  filterCount: {
+    minWidth: 19,
+    height: 19,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterCountActive: { backgroundColor: "rgba(255,255,255,0.9)" },
+  filterCountText: { fontSize: 10, fontWeight: "800", color: "#6b7280" },
+  filterCountTextActive: { color: "#ea580c" },
+
+  filterEmpty: { alignItems: "center", gap: 6, paddingVertical: 36 },
+  filterEmptyText: { fontSize: 13, fontWeight: "700", color: "#9ca3af" },
+  filterEmptyLink: { fontSize: 13, fontWeight: "800", color: "#ea580c" },
+
+  list: { padding: 16, paddingTop: 4, gap: 12, paddingBottom: 32 },
+  listSummary: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    marginBottom: 4,
+  },
+  staffCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    padding: 14,
+  },
+  staffTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  // Tinted with the role's own colour at low alpha, so the monogram carries
+  // the role at a glance even before the badge is read.
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { fontSize: 17, fontWeight: "900" },
+  staffIdentity: { flex: 1 },
   staffName: { fontSize: 15, fontWeight: "800", color: "#1f2937" },
   staffEmail: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
-  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
-  roleBadgeText: { fontSize: 11, fontWeight: "800" },
-  statusBadge: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginBottom: 8 },
-  statusActive: { backgroundColor: "#f0fdf4" },
-  statusDisabled: { backgroundColor: "#fef2f2" },
-  statusText: { fontSize: 11, fontWeight: "800" },
-  permsText: { fontSize: 12, color: "#6b7280", fontWeight: "500", marginBottom: 10 },
-  cardActions: { flexDirection: "row", gap: 10, borderTopWidth: 1, borderTopColor: "#f9fafb", paddingTop: 10 },
-  cardActionBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: "#fff7ed" },
+  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100, borderWidth: 1 },
+  roleBadgeText: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
+
+  // Label block on the left, switch pinned right - the switch reads as the
+  // control for the line it sits on.
+  accessRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f8fafc",
+  },
+  accessText: { flex: 1 },
+  accessTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  statusText: { fontSize: 12, fontWeight: "800" },
+  statusTextOn: { color: "#16a34a" },
+  statusTextOff: { color: "#dc2626" },
+  permCount: { fontSize: 11, fontWeight: "700", color: "#9ca3af" },
+
+  // Up to three named permissions then a "+N more" - the old version joined
+  // every label into one grey sentence that truncated mid-word.
+  permChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
+  permChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  permChipText: { fontSize: 10, fontWeight: "700", color: "#6b7280" },
+
+  cardActions: {
+    flexDirection: "row",
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f8fafc",
+    marginTop: 14,
+    paddingTop: 12,
+  },
+  cardActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#fff7ed",
+  },
   cardActionDanger: { backgroundColor: "#fef2f2" },
-  cardActionText: { fontSize: 12, fontWeight: "700", color: "#ea580c" },
+  cardActionText: { fontSize: 12, fontWeight: "800", color: "#ea580c" },
+  cardActionTextDanger: { color: "#dc2626" },
 
   modalContainer: { flex: 1, backgroundColor: "#f9fafb" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingTop: 50, backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },

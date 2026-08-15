@@ -4,8 +4,9 @@ import {
   Text,
   FlatList,
   StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
-import { UtensilsCrossed } from 'lucide-react-native';
+import { UtensilsCrossed, Plus, Layers } from 'lucide-react-native';
 
 // Import the MenuItem interface we created in MenuItemCard
 import MenuItemCard, { MenuItem } from './MenuItemCard';
@@ -18,14 +19,21 @@ interface MenuListProps {
   onEdit: (item: MenuItem) => void;
   onDelete: (id: string) => void;
   onToggleAvailable: (id: string, newStatus: boolean) => void;
+  // Drawn in the empty state only. Once a single dish exists these disappear
+  // and the header's two icons are the only way in - a first-run prompt, not
+  // a permanent toolbar competing with them.
+  onAddItem?: () => void;
+  onBulkAdd?: () => void;
 }
 
-const MenuList: React.FC<MenuListProps> = ({ 
-  items, 
-  loading, 
-  onEdit, 
-  onDelete, 
-  onToggleAvailable 
+const MenuList: React.FC<MenuListProps> = ({
+  items,
+  loading,
+  onEdit,
+  onDelete,
+  onToggleAvailable,
+  onAddItem,
+  onBulkAdd,
 }) => {
   if (loading) {
     return (
@@ -44,12 +52,34 @@ const MenuList: React.FC<MenuListProps> = ({
           </View>
         </View>
         <Text style={styles.emptyTitle}>Your menu is empty</Text>
-        {/* The old copy said 'Tap "Add Item" above'. That button no longer
-            exists - adding is now the + in the header, or the More page. */}
         <Text style={styles.emptySub}>
-          Use the + in the header to add your first dish, or add several at once from
-          the More tab.
+          Add your first dish, or import a whole menu at once. Everything else in the
+          dashboard - offers, orders, QR ordering - runs off this list.
         </Text>
+
+        {/* Directing people to controls elsewhere ("use the + in the header")
+            is what this replaces: an empty screen should carry its own way
+            out rather than describing one. */}
+        <View style={styles.emptyActions}>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={onAddItem}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Plus size={15} color="#fff" />
+            <Text style={styles.primaryBtnText}>Add item</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={onBulkAdd}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Layers size={15} color="#ea580c" />
+            <Text style={styles.secondaryBtnText}>Bulk add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -121,6 +151,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  // Same pair, same weighting as the Happy Hours gate: adding one dish is the
+  // ordinary path, bulk import the deliberate one.
+  emptyActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 22,
+  },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#ea580c',
+  },
+  primaryBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  secondaryBtnText: { fontSize: 13, fontWeight: '800', color: '#ea580c' },
   listContent: {
     paddingVertical: 16,
     paddingHorizontal: 16,

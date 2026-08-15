@@ -13,6 +13,10 @@ export const TAB_ACCESS: Record<string, TabRule> = {
   notifications: {},
   profile: { ownerOnly: true },
   settings: { ownerOnly: true },
+  // Anyone signed in to the restaurant can report a problem they hit - a
+  // waiter blocked by a broken QR code is exactly who needs this, and the
+  // ticket is raised against the restaurant either way.
+  support: {},
 };
 
 const TAB_PRIORITY = ['overview', 'orders', 'active_tables', 'menu', 'marketing', 'qr', 'notifications'];
