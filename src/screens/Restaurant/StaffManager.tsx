@@ -219,10 +219,10 @@ const StaffManager = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
+        {/* <View style={{ flex: 1 }}>
           <Text style={styles.title}>Manage Staff</Text>
           <Text style={styles.subtitle}>Add staff and control exactly what they can access.</Text>
-        </View>
+        </View> */}
         <TouchableOpacity onPress={handleRefresh} disabled={isRefreshing} style={styles.refreshBtn}>
           <RefreshCw size={16} color="#ea580c" />
         </TouchableOpacity>

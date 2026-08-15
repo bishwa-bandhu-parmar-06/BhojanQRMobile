@@ -1,20 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
 
-// The app's single loading indicator, used from ~15 screens.
-//
-// It used to animate the letters of "BhojanQR" one at a time (a port of the
-// website's BhojanQRLoader.jsx). That is now a plain spinning ring: it reads
-// as "working" instantly, at any size, and does not depend on the wordmark
-// being legible in a small inline slot.
-//
-// The name and props are unchanged so every existing call site keeps working
-// untouched - `fullScreen` and `message` behave exactly as before.
 
 const RING_SIZE = 40;
 const RING_THICKNESS = 4;
-const TRACK = '#ffedd5'; // pale orange, the unfilled part of the ring
-const ACCENT = '#ea580c'; // brand orange, the travelling arc
+const TRACK = '#ffedd5'; 
+const ACCENT = '#ea580c'; 
 
 interface BhojanQRLoaderProps {
   fullScreen?: boolean;

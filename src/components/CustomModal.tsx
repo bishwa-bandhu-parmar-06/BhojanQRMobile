@@ -6,13 +6,13 @@ import {
   TouchableOpacity, 
   Modal 
 } from 'react-native';
-import { LogOut, AlertCircle, CheckCircle } from 'lucide-react-native';
+import { LogOut, AlertCircle, CheckCircle, DoorOpen } from 'lucide-react-native';
 
 interface CustomModalProps {
   visible: boolean;
   title: string;
   message: string;
-  type?: 'logout' | 'error' | 'success'; // Icon aur color decide karne ke liye
+  type?: 'logout' | 'error' | 'success' | 'exit'; // Icon aur color decide karne ke liye
   confirmText?: string;
   cancelText?: string;
   onConfirm: () => void;
@@ -36,6 +36,10 @@ const CustomModal: React.FC<CustomModalProps> = ({
     switch (type) {
       case 'error': return { color: '#ea580c', bg: '#fff7ed', icon: <AlertCircle size={32} color="#ea580c" /> };
       case 'success': return { color: '#16a34a', bg: '#f0fdf4', icon: <CheckCircle size={32} color="#16a34a" /> };
+      // Brand orange, not the red used for logout: closing the app is a
+      // normal thing to do, not a destructive one, and colouring it as a
+      // warning makes an ordinary action feel like a mistake.
+      case 'exit': return { color: '#ea580c', bg: '#fff7ed', icon: <DoorOpen size={32} color="#ea580c" /> };
       case 'logout':
       default: return { color: '#ef4444', bg: '#fef2f2', icon: <LogOut size={32} color="#ef4444" /> };
     }

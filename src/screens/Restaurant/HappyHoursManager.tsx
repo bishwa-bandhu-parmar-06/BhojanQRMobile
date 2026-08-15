@@ -274,10 +274,10 @@ const HappyHoursManager = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
+        {/* <View style={{ flex: 1 }}>
           <Text style={styles.title}>Happy Hours</Text>
           <Text style={styles.subtitle}>Time-based discounts that switch on/off automatically.</Text>
-        </View>
+        </View> */}
         <TouchableOpacity onPress={handleRefresh} disabled={isRefreshing} style={styles.refreshBtn}>
           <RefreshCw size={16} color="#ea580c" />
         </TouchableOpacity>

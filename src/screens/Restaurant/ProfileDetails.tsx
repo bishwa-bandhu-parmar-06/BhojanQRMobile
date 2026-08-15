@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
-import { Store, User, Phone, MapPin, FileText, Edit2 } from "lucide-react-native";
+import { Store, User, Phone, MapPin, FileText, Edit2, LogOut } from "lucide-react-native";
 
 // FIX 1: Define types for the ProfileField props
 interface ProfileFieldProps {
@@ -33,9 +33,13 @@ interface RestaurantData {
 interface ProfileDetailsProps {
   restaurant: RestaurantData | null;
   setActiveTab: (tab: string) => void;
+  // Opens the dashboard's logout confirmation. Optional so the component can
+  // still be dropped anywhere without one, in which case the button is simply
+  // not rendered rather than being a dead control.
+  onLogout?: () => void;
 }
 
-const ProfileDetails: React.FC<ProfileDetailsProps> = ({ restaurant, setActiveTab }) => {
+const ProfileDetails: React.FC<ProfileDetailsProps> = ({ restaurant, setActiveTab, onLogout }) => {
   if (!restaurant) return null;
 
   const addressString =
@@ -46,7 +50,7 @@ const ProfileDetails: React.FC<ProfileDetailsProps> = ({ restaurant, setActiveTa
   return (
     <ScrollView keyboardShouldPersistTaps="handled" style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Profile Details</Text>
+        {/* <Text style={styles.title}>Profile Details</Text> */}
         <TouchableOpacity style={styles.editButton} onPress={() => setActiveTab("settings")}>
           <Edit2 size={16} color="#374151" />
           <Text style={styles.editButtonText}>Edit Settings</Text>
@@ -72,11 +76,36 @@ const ProfileDetails: React.FC<ProfileDetailsProps> = ({ restaurant, setActiveTa
           </View>
         </View>
       </View>
+
+      {onLogout && (
+        <TouchableOpacity style={styles.logoutButton} onPress={onLogout} activeOpacity={0.7}>
+          <LogOut size={18} color="#ef4444" />
+          <Text style={styles.logoutButtonText}>Log Out</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fee2e2",
+  },
+  logoutButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#ef4444",
+  },
   container: { flex: 1, padding: 16 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
   title: { fontSize: 24, fontWeight: "bold", color: "#1f2937" },

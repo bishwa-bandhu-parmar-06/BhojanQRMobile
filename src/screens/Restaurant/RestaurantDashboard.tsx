@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { 
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  RefreshControl
+  RefreshControl,
+  BackHandler
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import { useNavigation } from "@react-navigation/native";
@@ -18,6 +19,7 @@ import type { Permission } from "../../constants/permissions";
 
 import CustomModal from "../../components/CustomModal";
 import BhojanQRLoader from "../../components/BhojanQRLoader";
+import Header, { type HeaderAction } from "../../components/Header";
 
 // Icons for our new Mobile Tab Navigation
 import {
@@ -31,20 +33,25 @@ import {
   LayoutGrid,
   Users,
   Sparkles,
-  Bell,
   AlertTriangle,
   MoreHorizontal,
   ChevronRight,
   ArrowLeft,
+  Plus,
+  Layers,
+  RefreshCw,
 } from "lucide-react-native";
 
 // IMPORT MANAGERS
 import OverviewManager from "./OverviewManager";
-import MenuManager from "./MenuManager";
+import MenuManager, { type MenuAction } from "./MenuManager";
 import SettingsManager from "./SettingsManager";
+import AppSettingsManager from "./AppSettingsManager";
 import QRManager from "./QRManager";
 import OrderManager from "./OrderManager";
-import ProfileDetails from "./ProfileDetails";
+// ProfileDetails.tsx is intentionally not imported right now: the Profile
+// section renders SettingsManager, which already covers the same fields and
+// can edit them. The file is kept for the Profile Details rework.
 import ActiveTablesManager from "./ActiveTablesManager";
 import StaffManager from "./StaffManager";
 import HappyHoursManager from "./HappyHoursManager";
@@ -68,14 +75,47 @@ const BOTTOM_TABS = [
 // The secondary sections, listed on the More page. Notifications is included
 // even though it is not one of the five: it has no bottom-bar slot, so
 // leaving it out would make NotificationManager unreachable entirely.
+// Rows on the More page. Notifications is deliberately NOT here - it has its
+// own entry point in the header bell, and listing it twice made the bell look
+// like a shortcut to somewhere else.
 const MORE_SECTIONS = [
-  { id: "settings", label: "App Settings", icon: Settings, hint: "Documents, timings, preferences" },
-  { id: "staff", label: "Staff", icon: Users, hint: "Team members and permissions" },
+  // Profile first: it is the one an owner opens most, and it now holds
+  // everything about the restaurant itself.
+  { id: "profile", label: "Profile Details", icon: User, hint: "Name, locations, logo, login, documents" },
+  { id: "staff", label: "Manage Staff", icon: Users, hint: "Team members and permissions" },
   { id: "marketing", label: "Happy Hours", icon: Sparkles, hint: "Scheduled offers and discounts" },
-  { id: "qr", label: "QR Codes", icon: QrCode, hint: "Generate and print table codes" },
-  { id: "profile", label: "Profile", icon: User, hint: "Restaurant details and address" },
-  { id: "notifications", label: "Notifications", icon: Bell, hint: "Order and system alerts" },
+  { id: "qr", label: "Table QR Codes", icon: QrCode, hint: "Generate and print table codes" },
+  { id: "settings", label: "App Settings", icon: Settings, hint: "Theme, language, alerts" },
 ];
+
+// Every panel that opens WITHOUT the app header, showing only its own back
+// bar. Notifications is included even though it is not a More row, because it
+// behaves identically once open.
+const SECTION_LABELS: Record<string, string> = {
+  settings: "App Settings",
+  staff: "Manage Staff",
+  marketing: "Happy Hours",
+  qr: "Table QR Codes",
+  profile: "Profile Details",
+  notifications: "Notifications",
+};
+
+// Menu actions, offered as rows on the More page. They are not sections - they
+// switch to the Menu tab and open a form there - so they are kept separate
+// from MORE_SECTIONS, which the back bar and tab highlighting both key off.
+const MORE_MENU_ACTIONS: { id: MenuAction; label: string; icon: any; hint: string }[] = [
+  { id: "add", label: "Add Menu Item", icon: Plus, hint: "Create a single dish" },
+  { id: "bulk", label: "Bulk Add Menu", icon: Layers, hint: "Add many dishes at once" },
+];
+
+// Headings for the five bottom-bar destinations, shown centred in the header.
+const TAB_TITLES: Record<string, string> = {
+  overview: "Dashboard Overview",
+  orders: "Live Orders",
+  active_tables: "Active Tables",
+  menu: "Menu",
+  more: "More",
+};
 
 const RestaurantDashboard = () => {
   const [restaurant, setRestaurant] = useState<any>(null);
@@ -95,6 +135,117 @@ const RestaurantDashboard = () => {
   // add-document modal so they land directly on the form instead of having
   // to scroll and find it themselves.
   const [autoOpenAddDoc, setAutoOpenAddDoc] = useState(false);
+
+  // A trail of the panels visited, so back retraces the exact route taken
+  // rather than jumping to a fixed destination. Home -> Orders -> Tables ->
+  // Notifications -> Menu backs out in precisely that order.
+  //
+  // A ref, not state: nothing renders from it, and keeping it out of state
+  // avoids a re-render on every navigation just to record where you came
+  // from. It replaces the old single `returnTab` value, which could only ever
+  // remember one step and sent you to the wrong place on a longer route.
+  const historyRef = useRef<string[]>([]);
+
+  const [isExitModalVisible, setExitModalVisible] = useState(false);
+
+  // Lets goToTab read the current panel without depending on it, so the
+  // callback stays stable and never captures a stale value.
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // The single way forward. Records where you were before moving, so back can
+  // retrace it. Re-selecting the panel you are already on records nothing -
+  // otherwise back would appear to do nothing while it unwound duplicates.
+  const goToTab = useCallback((next: string) => {
+    const from = activeTabRef.current;
+    if (from === next) return;
+    historyRef.current.push(from);
+    setActiveTab(next);
+  }, []);
+
+  // The single way back. Returns false when the trail is empty, which is what
+  // tells the hardware-back handler there is nothing left to unwind.
+  const goBack = useCallback(() => {
+    const previous = historyRef.current.pop();
+    if (previous === undefined) return false;
+    setActiveTab(previous);
+    return true;
+  }, []);
+
+  // Two back presses inside this window count as "I want out", regardless of
+  // how much trail is left. Deliberately short: long enough for a decisive
+  // double-tap, short enough that unwinding several screens at a normal pace
+  // does not trip it.
+  const DOUBLE_BACK_MS = 300;
+  const lastBackAtRef = useRef(0);
+
+  useEffect(() => {
+    const onHardwareBack = () => {
+      // Any modal already on screen owns the back press - closing it is what
+      // the user means, not navigating or quitting.
+      if (isExitModalVisible) {
+        setExitModalVisible(false);
+        return true;
+      }
+      if (isLogoutModalVisible) {
+        setLogoutModalVisible(false);
+        return true;
+      }
+
+      const now = Date.now();
+      if (now - lastBackAtRef.current < DOUBLE_BACK_MS) {
+        lastBackAtRef.current = 0;
+        setExitModalVisible(true);
+        return true;
+      }
+      lastBackAtRef.current = now;
+
+      // Retrace the trail, and only ask about leaving once it is exhausted.
+      if (goBack()) return true;
+      setExitModalVisible(true);
+      // Always true: returning false would let Android close the app straight
+      // away, which is the very thing the dialog exists to confirm.
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onHardwareBack,
+    );
+    return () => subscription.remove();
+  }, [goBack, isExitModalVisible, isLogoutModalVisible]);
+
+  // A one-shot request handed to MenuManager: open the single-item form, or
+  // the bulk form. Set by the header's + on the Menu tab and by the two More
+  // rows; MenuManager clears it as soon as it has acted.
+  const [menuAction, setMenuAction] = useState<MenuAction | null>(null);
+
+  const requestMenuAction = useCallback(
+    (action: MenuAction) => {
+      setMenuAction(action);
+      goToTab("menu");
+    },
+    [goToTab],
+  );
+
+  // True while a panel has a full sub-screen open - MenuManager's item forms,
+  // or Profile Details' address and document editors. The app header comes off
+  // for the same reason it does inside a More section: one back affordance,
+  // not two stacked bars.
+  const [isSubScreenOpen, setIsSubScreenOpen] = useState(false);
+  // Stable identity - the panels call these from effects keyed on them, so a
+  // new function each render would re-fire those effects continuously.
+  const handleSubScreenChange = useCallback((open: boolean) => setIsSubScreenOpen(open), []);
+  const handleMenuActionConsumed = useCallback(() => setMenuAction(null), []);
+  const handleAutoOpenConsumed = useCallback(() => setAutoOpenAddDoc(false), []);
+
+  // Profile Details is a section, so it has no app header to hang a control
+  // from - the section bar is its only chrome. This drives the settings icon
+  // there, which opens the panel's "Manage Profile" list.
+  const [profileAction, setProfileAction] = useState<"manage" | null>(null);
+  const handleProfileActionConsumed = useCallback(() => setProfileAction(null), []);
 
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
@@ -153,6 +304,7 @@ const RestaurantDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOwner, user?.permissions]);
 
+
   useEffect(() => {
     if (!user) return;
     setRestaurant((prev: any) => {
@@ -204,10 +356,42 @@ const RestaurantDashboard = () => {
     canAccessTab(section.id, { isOwner, can }),
   );
 
-  // A secondary section is open (not the More list itself). Used both to keep
-  // the More tab lit while you are inside one, and to decide whether to show
-  // the "back to More" row.
-  const openMoreSection = visibleMoreSections.find(section => section.id === activeTab);
+  // A section is open (a More row, or Notifications from the bell). Drives
+  // three things: hiding the app header, showing the back bar, and keeping
+  // the More tab lit while you are inside one.
+  const openSectionLabel = SECTION_LABELS[activeTab];
+
+  // Only a More ROW lights the More tab. Notifications is a section too, but
+  // it is reached from the header bell on any tab, so lighting More while the
+  // user is reading notifications opened from Overview would point at a place
+  // they never went.
+  const isMoreRowOpen = MORE_SECTIONS.some(section => section.id === activeTab);
+
+  // Right-hand header controls, in render order (left to right, bell last).
+  //
+  // Refresh goes on every data tab. It reuses onRefresh - the same handler as
+  // pull-to-refresh - which re-reads the profile and bumps refreshKey; since
+  // every panel is keyed on that, the active one remounts and refetches. That
+  // is why removing OrderManager's own Refresh button lost nothing.
+  //
+  // More is excluded: it lists destinations and has nothing to re-fetch.
+  const headerActions: HeaderAction[] = [];
+  if (activeTab !== "more") {
+    headerActions.push({
+      key: "refresh",
+      icon: RefreshCw,
+      label: "Refresh",
+      onPress: onRefresh,
+    });
+  }
+  if (activeTab === "menu" && canAccessTab("menu", { isOwner, can })) {
+    headerActions.push({
+      key: "add-menu-item",
+      icon: Plus,
+      label: "Add menu item",
+      onPress: () => requestMenuAction("add"),
+    });
+  }
 
   // "more" has no TAB_ACCESS rule of its own - canAccessTab would return true
   // for it unconditionally - so it is gated on whether it would have anything
@@ -245,23 +429,71 @@ const RestaurantDashboard = () => {
         }}
       />
 
-      {/* The "Welcome back, <restaurant>" bar with its logout button used to
-          sit here. It was a third stacked header (app header, this, then each
-          panel's own title), so it is gone: the app header above covers
-          branding, and logout moved to the More page and the Profile panel. */}
+      {/* Confirms leaving the app. "Stay" occupies the confirm slot on
+          purpose: CustomModal renders that button filled and the cancel one
+          grey, and the safe choice is the one that should catch the thumb.
+          Closing is still a single tap, just not the emphasised one. */}
+      <CustomModal
+        visible={isExitModalVisible}
+        type="exit"
+        title="Close BhojanQR?"
+        message="You'll still be signed in next time you open the app."
+        confirmText="Stay"
+        cancelText="Close app"
+        onConfirm={() => setExitModalVisible(false)}
+        onCancel={() => {
+          setExitModalVisible(false);
+          BackHandler.exitApp();
+        }}
+      />
 
-      {/* 2. SECTION BAR - only inside a More section, as a way back to the
-             More list. The five bottom-bar destinations are always one tap
-             away and need no such affordance. */}
-      {openMoreSection && (
-        <TouchableOpacity
-          style={styles.sectionBar}
-          onPress={() => setActiveTab("more")}
-          activeOpacity={0.7}
-        >
-          <ArrowLeft size={18} color="#374151" />
-          <Text style={styles.sectionBarText}>{openMoreSection.label}</Text>
-        </TouchableOpacity>
+      {/* 1. APP HEADER - rendered here rather than by the navigator so its
+             heading can name the current panel. Hidden entirely inside a
+             section, where the back bar below is the only chrome. */}
+      {!openSectionLabel && !isSubScreenOpen && (
+        <Header
+          title={TAB_TITLES[activeTab]}
+          // No bell on More: that page is a static list of destinations, and
+          // one of the things it lists is where notifications already live.
+          // On Menu the + takes the bell's place instead.
+          onBellPress={
+            activeTab === "more" || activeTab === "menu"
+              ? undefined
+              : () => goToTab("notifications")
+          }
+          actions={headerActions}
+        />
+      )}
+
+      {/* 2. SECTION BAR - the sole chrome inside a section. Returns to
+             wherever the section was opened from - it pops the same trail the
+             hardware back button does, so the two never disagree. */}
+      {/* Hidden while a sub-screen is open: that screen brings its own back
+          bar, and two stacked bars would each claim to be the way out. */}
+      {openSectionLabel && !isSubScreenOpen && (
+        <View style={styles.sectionBar}>
+          <TouchableOpacity
+            style={styles.sectionBarBack}
+            onPress={goBack}
+            activeOpacity={0.7}
+          >
+            <ArrowLeft size={18} color="#374151" />
+            <Text style={styles.sectionBarText}>{openSectionLabel}</Text>
+          </TouchableOpacity>
+
+          {/* Everything that edits the profile lives behind this, so the page
+              itself can stay a read-only summary. */}
+          {activeTab === "profile" && (
+            <TouchableOpacity
+              onPress={() => setProfileAction("manage")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Manage profile"
+            >
+              <Settings size={20} color="#374151" />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* 3. DOCUMENT SUSPENSION WARNING - shown above every tab until at
@@ -275,7 +507,10 @@ const RestaurantDashboard = () => {
           <TouchableOpacity
             style={styles.warningBtn}
             onPress={() => {
-              setActiveTab("settings");
+              // Documents moved to Profile Details along with the rest of the
+              // restaurant's data - sending the owner to App Settings would
+              // now land them on theme and language.
+              goToTab("profile");
               setAutoOpenAddDoc(true);
             }}
           >
@@ -284,14 +519,31 @@ const RestaurantDashboard = () => {
         </View>
       )}
 
-      {/* MenuManager owns its own full-screen scrolling (MenuList renders a
-          FlatList), so it's rendered in a plain flex view instead of the
-          pull-to-refresh ScrollView below - nesting a FlatList inside a
-          ScrollView of the same orientation breaks virtualization and trips
-          React Native's "VirtualizedLists should never be nested" warning. */}
+      {/* Panels that own a FlatList get a plain flex view instead of the
+          pull-to-refresh ScrollView below. Nesting a FlatList inside a
+          ScrollView of the same orientation destroys virtualization - the
+          list renders every row at once - and trips React Native's
+          "VirtualizedLists should never be nested" warning. Both of these
+          bring their own RefreshControl, so nothing is lost by opting out.
+            - MenuManager -> MenuList's FlatList
+            - OrderManager -> the infinite-scrolling order list
+            - ActiveTablesManager -> the live-tables list */}
       {activeTab === "menu" && canAccessTab("menu", { isOwner, can }) ? (
         <View style={styles.mainContent}>
-          <MenuManager key={refreshKey} />
+          <MenuManager
+            key={refreshKey}
+            pendingAction={menuAction}
+            onActionConsumed={handleMenuActionConsumed}
+            onSubScreenChange={handleSubScreenChange}
+          />
+        </View>
+      ) : activeTab === "orders" && canAccessTab("orders", { isOwner, can }) ? (
+        <View style={styles.mainContent}>
+          <OrderManager key={refreshKey} />
+        </View>
+      ) : activeTab === "active_tables" && canAccessTab("active_tables", { isOwner, can }) ? (
+        <View style={styles.mainContent}>
+          <ActiveTablesManager key={refreshKey} />
         </View>
       ) : (
         <ScrollView
@@ -314,7 +566,7 @@ const RestaurantDashboard = () => {
                 <TouchableOpacity
                   key={id}
                   style={styles.moreRow}
-                  onPress={() => setActiveTab(id)}
+                  onPress={() => goToTab(id)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.moreIconBox}>
@@ -327,6 +579,29 @@ const RestaurantDashboard = () => {
                   <ChevronRight size={18} color="#9ca3af" />
                 </TouchableOpacity>
               ))}
+
+              {/* Menu actions. Gated on manage_menu specifically - unlike the
+                  sections above, these are not covered by their own
+                  TAB_ACCESS rule, so without this a waiter would be offered
+                  an "Add Menu Item" row that the Menu tab itself denies. */}
+              {canAccessTab("menu", { isOwner, can }) &&
+                MORE_MENU_ACTIONS.map(({ id, label, icon: Icon, hint }) => (
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.moreRow}
+                    onPress={() => requestMenuAction(id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.moreIconBox}>
+                      <Icon size={18} color="#ea580c" />
+                    </View>
+                    <View style={styles.moreRowText}>
+                      <Text style={styles.moreRowLabel}>{label}</Text>
+                      <Text style={styles.moreRowHint}>{hint}</Text>
+                    </View>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </TouchableOpacity>
+                ))}
 
               {/* Logout closes the list, after Notifications. It is the one
                   destructive action here, so it is separated and tinted red
@@ -347,19 +622,31 @@ const RestaurantDashboard = () => {
             </View>
           )}
           {activeTab === "overview" && canAccessTab("overview", { isOwner, can }) && <OverviewManager key={refreshKey} />}
-          {activeTab === "orders" && canAccessTab("orders", { isOwner, can }) && <OrderManager key={refreshKey} />}
-          {activeTab === "active_tables" && canAccessTab("active_tables", { isOwner, can }) && <ActiveTablesManager key={refreshKey} />}
           {activeTab === "staff" && canAccessTab("staff", { isOwner, can }) && <StaffManager key={refreshKey} />}
           {activeTab === "marketing" && canAccessTab("marketing", { isOwner, can }) && <HappyHoursManager key={refreshKey} />}
           {activeTab === "qr" && canAccessTab("qr", { isOwner, can }) && <QRManager restaurant={restaurant} key={refreshKey} />}
           {activeTab === "notifications" && canAccessTab("notifications", { isOwner, can }) && <NotificationManager key={refreshKey} />}
-          {activeTab === "profile" && canAccessTab("profile", { isOwner, can }) && <ProfileDetails restaurant={restaurant} setActiveTab={setActiveTab} key={refreshKey} />}
-          {activeTab === "settings" && canAccessTab("settings", { isOwner, can }) && (
+          {/* Profile Details now owns everything about the RESTAURANT -
+              basic details, locations, logo, login email, password and
+              government documents. That is what SettingsManager has always
+              contained; it simply used to sit behind "App Settings", which
+              put account data under a name that promised app preferences. */}
+          {activeTab === "profile" && canAccessTab("profile", { isOwner, can }) && (
             <SettingsManager
               key={refreshKey}
               autoOpenAddDoc={autoOpenAddDoc}
-              onAutoOpenConsumed={() => setAutoOpenAddDoc(false)}
+              onAutoOpenConsumed={handleAutoOpenConsumed}
+              // Its editors are full sub-screens, so the app header comes off
+              // while one is open - same as the menu editor.
+              onSubScreenChange={handleSubScreenChange}
+              pendingAction={profileAction}
+              onActionConsumed={handleProfileActionConsumed}
             />
+          )}
+          {/* App Settings is now genuinely app settings: preferences that
+              belong to this device rather than to the account. */}
+          {activeTab === "settings" && canAccessTab("settings", { isOwner, can }) && (
+            <AppSettingsManager key={refreshKey} />
           )}
         </ScrollView>
       )}
@@ -374,12 +661,12 @@ const RestaurantDashboard = () => {
           // The More tab stays lit while any of its sections is open, so the
           // bar always shows where you are rather than going blank.
           const isActive =
-            id === "more" ? activeTab === "more" || !!openMoreSection : activeTab === id;
+            id === "more" ? activeTab === "more" || isMoreRowOpen : activeTab === id;
           return (
             <TouchableOpacity
               key={id}
               style={styles.bottomTab}
-              onPress={() => setActiveTab(id)}
+              onPress={() => goToTab(id)}
               activeOpacity={0.7}
             >
               <Icon size={20} color={isActive ? "#ea580c" : "#9ca3af"} />
@@ -413,45 +700,24 @@ const styles = StyleSheet.create({
   },
   
   // Header Styles
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: "#ffffff",
-  },
-  greeting: {
-    fontSize: 12,
-    color: "#6b7280",
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  restaurantName: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#1f2937",
-    maxWidth: 250,
-  },
-  logoutButton: {
-    padding: 10,
-    backgroundColor: "#fee2e2",
-    borderRadius: 12,
-  },
-
-  // Tab Menu Styles
   // Bar shown only inside a More section, as the way back to the More list.
   sectionBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderColor: "#f3f4f6",
+  },
+  // The back half is its own touchable so the tap target covers the arrow and
+  // the title together, without swallowing the action on the right.
+  sectionBarBack: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
   },
   sectionBarText: {
     fontSize: 16,

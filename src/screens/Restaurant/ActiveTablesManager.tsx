@@ -4,6 +4,8 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  FlatList,
+  RefreshControl,
   StyleSheet,
   Modal,
 } from "react-native";
@@ -52,6 +54,9 @@ interface MasterBill {
 const ActiveTablesManager = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  // Pull-to-refresh is owned here: this panel renders outside the dashboard's
+  // ScrollView (a FlatList cannot be nested in one), so it brings its own.
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string | number | null>(null);
   const [bill, setBill] = useState<MasterBill | null>(null);
@@ -189,30 +194,56 @@ const ActiveTablesManager = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Active Tables</Text>
-        <Text style={styles.subtitle}>Live dining sessions across your restaurant.</Text>
-      </View>
-
       {loadError && sessions.length === 0 ? (
         <View style={styles.emptyState}>
           <SectionError message="Failed to load active tables." onRetry={fetchSessions} />
         </View>
       ) : sessions.length === 0 ? (
         <View style={styles.emptyState}>
-          <LayoutGrid size={48} color="#d1d5db" style={{ marginBottom: 12 }} />
-          <Text style={styles.emptyText}>No tables are currently occupied.</Text>
+          <View style={styles.emptyIconRing}>
+            <View style={styles.emptyIconCircle}>
+              <LayoutGrid size={30} color="#ea580c" />
+            </View>
+          </View>
+          <Text style={styles.emptyTitle}>No tables occupied</Text>
+          <Text style={styles.emptySubtitle}>
+            A table appears here as soon as someone orders from its QR code, and stays
+            until you close the bill.
+          </Text>
         </View>
       ) : (
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.grid}>
-          {sessions.map((session) => {
+        /* Virtualized, like the orders list - a busy venue can have a lot of
+           live tables, and the mapped ScrollView built every card up front on
+           every socket-driven re-render. */
+        <FlatList
+          data={sessions}
+          keyExtractor={(session) => session._id}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={async () => {
+                setIsRefreshing(true);
+                await fetchSessions();
+                setIsRefreshing(false);
+              }}
+              colors={["#ea580c"]}
+              tintColor="#ea580c"
+            />
+          }
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={11}
+          removeClippedSubviews
+          renderItem={({ item: session }) => {
             const orders = session.orders || [];
             const activeCount = activeOrdersFor(session).length;
             const preparingCount = orders.filter((o) => o && o.status === "Preparing").length;
             const completedCount = orders.filter((o) => o && o.status === "Completed").length;
             return (
               <TouchableOpacity
-                key={session._id}
                 style={styles.tableCard}
                 onPress={() => openTable(session.tableNumber)}
                 activeOpacity={0.85}
@@ -247,8 +278,8 @@ const ActiveTablesManager = () => {
                 </View>
               </TouchableOpacity>
             );
-          })}
-        </ScrollView>
+          }}
+        />
       )}
 
       {/* TABLE DETAIL MODAL */}
@@ -379,8 +410,41 @@ const styles = StyleSheet.create({
   header: { padding: 16, paddingBottom: 8 },
   title: { fontSize: 28, fontWeight: "900", color: "#111827" },
   subtitle: { fontSize: 14, color: "#6b7280", fontWeight: "500", marginTop: 4 },
-  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 80, marginHorizontal: 16, backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6" },
-  emptyText: { color: "#6b7280", fontWeight: "600" },
+  // No card: the message sits on the page background and fills the remaining
+  // height so it centres in the empty space rather than hugging the top of a
+  // box. Matches the orders list's empty state.
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  emptyIconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#fff7ed",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#ffedd5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#1f2937" },
+  emptySubtitle: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6b7280",
+    marginTop: 8,
+    textAlign: "center",
+  },
 
   grid: { padding: 16, flexDirection: "row", flexWrap: "wrap", gap: 12 },
   tableCard: { width: "47%", backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", padding: 14, gap: 4 },

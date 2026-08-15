@@ -5,12 +5,13 @@ import {
   FlatList,
   StyleSheet,
 } from 'react-native';
+import { UtensilsCrossed } from 'lucide-react-native';
 
-// FIX 1: Import the MenuItem interface we created in MenuItemCard
+// Import the MenuItem interface we created in MenuItemCard
 import MenuItemCard, { MenuItem } from './MenuItemCard';
 import { MenuListSkeleton } from '../Skeleton';
 
-// FIX 2: Define exactly what props this component expects
+// Define exactly what props this component expects
 interface MenuListProps {
   items: MenuItem[];
   loading: boolean;
@@ -26,8 +27,6 @@ const MenuList: React.FC<MenuListProps> = ({
   onDelete, 
   onToggleAvailable 
 }) => {
-  // Skeleton loading state - shaped like the real cards so the list
-  // doesn't visually "jump" once the data arrives.
   if (loading) {
     return (
       <View style={styles.skeletonWrap}>
@@ -36,23 +35,28 @@ const MenuList: React.FC<MenuListProps> = ({
     );
   }
 
-  // Polished Empty State
   if (!items || items.length === 0) {
     return (
       <View style={styles.emptyState}>
+        <View style={styles.emptyIconRing}>
+          <View style={styles.emptyIconCircle}>
+            <UtensilsCrossed size={30} color="#ea580c" />
+          </View>
+        </View>
         <Text style={styles.emptyTitle}>Your menu is empty</Text>
+        {/* The old copy said 'Tap "Add Item" above'. That button no longer
+            exists - adding is now the + in the header, or the More page. */}
         <Text style={styles.emptySub}>
-          Tap "Add Item" above to start building your restaurant's digital menu.
+          Use the + in the header to add your first dish, or add several at once from
+          the More tab.
         </Text>
       </View>
     );
   }
 
-  // Menu List Layout
   return (
     <FlatList
-    keyboardShouldPersistTaps="handled"
-    
+      keyboardShouldPersistTaps="handled"
       data={items}
       keyExtractor={item => item._id}
       renderItem={({ item }) => (
@@ -65,6 +69,12 @@ const MenuList: React.FC<MenuListProps> = ({
       )}
       contentContainerStyle={styles.listContent}
       showsVerticalScrollIndicator={false}
+      // Render a screenful up front and extend as the user scrolls. A full
+      // menu can run to hundreds of dishes, each with an image.
+      initialNumToRender={8}
+      maxToRenderPerBatch={8}
+      windowSize={11}
+      removeClippedSubviews
     />
   );
 };
@@ -74,24 +84,38 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
   },
+  // Unboxed and vertically centred, matching the orders and tables lists.
   emptyState: {
+    flex: 1,
     alignItems: 'center',
-    padding: 40,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    borderStyle: 'dashed',
-    borderRadius: 20,
-    marginTop: 24,
-    marginHorizontal: 16,
-    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  emptyIconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#ffedd5',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#1f2937',
-    marginTop: 12,
   },
   emptySub: {
+    fontSize: 13,
     color: '#6b7280',
     marginTop: 8,
     textAlign: 'center',

@@ -59,8 +59,12 @@ const NotificationManager = () => {
     }
   };
 
+  // Mount-only on purpose: the list is re-fetched explicitly on the error
+  // paths below, and re-running this whenever fetchNotifs is re-created would
+  // refetch on every render.
   useEffect(() => {
     fetchNotifs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleMarkAllRead = async () => {

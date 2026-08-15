@@ -1,13 +1,5 @@
 import { Permission } from './permissions';
 
-// Mirrors the website's client/src/constants/dashboardTabs.js - single
-// source of truth for which dashboard tab requires which permission.
-// `ownerOnly: true` means the restaurant owner only - no staff permission
-// can unlock it (the backend itself hard-403s staff on these routes, e.g.
-// /restaurants/profile, so this isn't just cosmetic gating).
-// `permission: [...]` means owners always pass; staff need at least one of
-// the listed permissions. No `permission`/`ownerOnly` at all means every
-// logged-in user (owner or staff) can see it.
 type TabRule = { ownerOnly?: boolean; permission?: Permission[] };
 
 export const TAB_ACCESS: Record<string, TabRule> = {

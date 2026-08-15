@@ -161,10 +161,10 @@ const QRManager: React.FC<QRManagerProps> = ({ restaurant }) => {
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled" style={styles.container}>
-      <View style={styles.header}>
+      {/* <View style={styles.header}>
         <Text style={styles.title}>Table QR Codes</Text>
         <Text style={styles.subtitle}>Generate, save, and print table stands.</Text>
-      </View>
+      </View> */}
 
       <View style={styles.controlCard}>
         <View style={styles.inputWrapper}>

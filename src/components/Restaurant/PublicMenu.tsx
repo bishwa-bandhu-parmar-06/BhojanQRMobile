@@ -16,14 +16,11 @@ import BhojanQRLoader from '../BhojanQRLoader';
 import MenuImage from '../MenuImage';
 import SectionError from '../SectionError';
 
-// View-only menu - no cart/ordering here. The scanner-connected ordering
-// flow is GuestMenu.tsx; this is reached separately (e.g. "View Menu" from
-// a past order in Bill Vault) just to browse a restaurant's dishes.
 const PublicMenu = () => {
   const route = useRoute<any>();
   const { restaurantId } = route.params || {};
 
-  // FIX 3: Explicitly type allMenuItems as an array of any, not never[]
+  // Explicitly type allMenuItems as an array of any, not never[]
   const [allMenuItems, setAllMenuItems] = useState<any[]>([]);
   const [restaurantName, setRestaurantName] = useState('Loading...');
   const [loading, setLoading] = useState(true);
@@ -56,14 +53,12 @@ const PublicMenu = () => {
 
   const filteredItems = useMemo(() => {
     return allMenuItems.filter(
-      // FIX 4: Explicitly type 'item' as any
       (item: any) => selectedCategory === 'All' || item.category === selectedCategory,
     );
   }, [allMenuItems, selectedCategory]);
 
   const categories = [
     'All',
-    // FIX 5: Explicitly type 'item' as any
     ...new Set(allMenuItems.map((item: any) => item.category)),
   ];
 

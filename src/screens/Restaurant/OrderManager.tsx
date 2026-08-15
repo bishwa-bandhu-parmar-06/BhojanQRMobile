@@ -4,12 +4,22 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  FlatList,
+  RefreshControl,
   StyleSheet,
   TextInput,
   Modal,
 } from "react-native";
 import Toast from "react-native-toast-message";
-import { ShoppingBag, IndianRupee, RefreshCw, XCircle, Layers, ChevronRight } from "lucide-react-native";
+import {
+  ShoppingBag,
+  IndianRupee,
+  XCircle,
+  Layers,
+  ChevronRight,
+  List,
+  LayoutGrid,
+} from "lucide-react-native";
 
 import { getRestaurantOrders, updateOrderStatus } from "../../API/orderApi";
 import { ALL_ORDER_STATUSES, ORDER_STATUS_FLOW } from "../../constants/orderStatus";
@@ -17,10 +27,14 @@ import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
 import { socket } from "../../utils/socket";
 
+// The order cards carry no margin of their own - they used to sit in a View
+// with `gap: 16`, which FlatList rows do not inherit. Declared at module scope
+// so it is a stable component type rather than a new one each render.
+const OrderSeparator = () => <View style={styles.listSeparator} />;
+
 const OrderManager = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -64,7 +78,10 @@ const OrderManager = () => {
     };
   }, []);
 
-  const handleManualRefresh = async () => {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
+  const handlePullRefresh = async () => {
     setIsRefreshing(true);
     await fetchOrders();
     setIsRefreshing(false);
@@ -119,11 +136,15 @@ const OrderManager = () => {
     return buckets;
   }, [orders]);
 
+  // Each filter carries its status's own colour from the shared constant, so
+  // the selected pill reads as that status rather than every filter looking
+  // identically orange - "Cancelled" selected should not look like "Ready".
   const filterTabs = [
-    { id: "all", label: "All", count: orders.length },
-    ...ALL_ORDER_STATUSES.map(({ value, label }) => ({
+    { id: "all", label: "All", count: orders.length, color: "#ea580c" },
+    ...ALL_ORDER_STATUSES.map(({ value, label, color }) => ({
       id: value,
       label,
+      color,
       count: segmentedOrders[value]?.length || 0,
     })),
   ];
@@ -149,10 +170,6 @@ const OrderManager = () => {
     return Object.values(map);
   }, [visibleOrders]);
 
-  // When the "Review All Batches" modal is open, keep its order list synced
-  // with live status changes the same way the website's OrderList.jsx does -
-  // otherwise tapping a status button inside the modal wouldn't visibly
-  // update until the modal was closed and reopened.
   useEffect(() => {
     if (!activeSession) return;
     const sessionKey = activeSession.orders[0]?.tableSessionId || activeSession.orders[0]?._id;
@@ -162,6 +179,8 @@ const OrderManager = () => {
     if (refreshedGroup.length > 0) {
       setActiveSession((prev) => (prev ? { ...prev, orders: refreshedGroup } : prev));
     }
+    // Intentionally keyed on `orders` alone: adding activeSession would
+    // re-run this on the very state it sets, looping.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders]);
 
@@ -346,67 +365,164 @@ const OrderManager = () => {
         />
       </CustomModal>
 
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.title}>Live Orders</Text>
-          <Text style={styles.subtitle}>Manage incoming orders from your tables.</Text>
-        </View>
-        <TouchableOpacity onPress={handleManualRefresh} disabled={isRefreshing} style={styles.refreshBtn}>
-          <RefreshCw size={14} color="#ea580c" />
-          <Text style={styles.refreshBtnText}>{isRefreshing ? "Refreshing…" : "Refresh"}</Text>
-        </TouchableOpacity>
-      </View>
+      {/* The Refresh button lived here. It is now an icon in the app header,
+          shared by every data tab, so this screen no longer carries its own.
+          The list also refreshes on its own: a 30s poll plus a live socket
+          listener, both above. */}
 
-      {/* Status Filter Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.filterRow}
-      >
+      {/* Controls are hidden entirely until there is at least one order.
+          Filtering and switching layout on an empty list is busywork, and the
+          empty state reads far better with the whole screen to itself. Keyed
+          on the unfiltered count, not the visible one - otherwise selecting a
+          filter with no matches would hide the very pills you need to get
+          back out of it. */}
+      {orders.length > 0 && (
+        <View style={styles.controlsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterRow}
+          >
         {filterTabs.map((tab) => {
           const isActive = activeFilter === tab.id;
           return (
             <TouchableOpacity
               key={tab.id}
               onPress={() => setActiveFilter(tab.id)}
-              style={[styles.filterPill, isActive && styles.filterPillActive]}
+              activeOpacity={0.75}
+              style={[
+                styles.filterPill,
+                isActive && { backgroundColor: tab.color, borderColor: tab.color },
+              ]}
             >
+              {/* A small dot in the status colour keeps each filter
+                  identifiable while unselected, where the pill itself is
+                  neutral. Hidden on the selected one - the pill has taken
+                  that colour, so the dot would just be a smudge on it. */}
+              {!isActive && <View style={[styles.filterDot, { backgroundColor: tab.color }]} />}
               <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
                 {tab.label}
               </Text>
-              <View style={[styles.filterCount, isActive && styles.filterCountActive]}>
-                <Text style={[styles.filterCountText, isActive && styles.filterCountTextActive]}>
-                  {tab.count}
-                </Text>
-              </View>
+              {tab.count > 0 && (
+                <View style={[styles.filterCount, isActive && styles.filterCountActive]}>
+                  <Text
+                    style={[
+                      styles.filterCountText,
+                      isActive && { color: tab.color },
+                    ]}
+                  >
+                    {tab.count}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+          </ScrollView>
 
-      <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} contentContainerStyle={styles.listContent}>
-        {visibleOrders.length === 0 ? (
-          <View style={styles.emptyState}>
-            <ShoppingBag size={64} color="#d1d5db" style={styles.emptyIcon} />
-            <Text style={styles.emptyTitle}>No Orders Here</Text>
-            <Text style={styles.emptySubtitle}>
-              {activeFilter === "all"
-                ? "When customers order via QR, they will appear here."
-                : `No orders are currently "${activeFilter}".`}
-            </Text>
+          {/* Layout toggle. Grid drops the list to two columns - useful for
+              scanning many tables at a glance; list keeps the full-width
+              cards where every line item is readable. */}
+          <View style={styles.viewToggle}>
+            <TouchableOpacity
+              onPress={() => setViewMode("list")}
+              style={[styles.viewToggleBtn, viewMode === "list" && styles.viewToggleBtnActive]}
+              accessibilityRole="button"
+              accessibilityLabel="List view"
+            >
+              <List size={16} color={viewMode === "list" ? "#ea580c" : "#9ca3af"} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setViewMode("grid")}
+              style={[styles.viewToggleBtn, viewMode === "grid" && styles.viewToggleBtnActive]}
+              accessibilityRole="button"
+              accessibilityLabel="Grid view"
+            >
+              <LayoutGrid size={16} color={viewMode === "grid" ? "#ea580c" : "#9ca3af"} />
+            </TouchableOpacity>
           </View>
-        ) : (
-          <View style={styles.grid}>
-            {groupedVisibleOrders.map((tableOrders, index) =>
-              tableOrders.length === 1
-                ? renderOrderCard(tableOrders[0])
-                : renderSessionGroupCard(tableOrders, index),
-            )}
+        </View>
+      )}
+
+      {/* A FlatList rather than a mapped ScrollView, so rows are virtualized -
+          only what is near the viewport is mounted. That is what makes this
+          scroll smoothly once a busy service has hundreds of orders, where
+          the old version built every card up front on every re-render (and
+          this list re-renders on every socket event). */}
+      <FlatList
+        // numColumns cannot change on a live FlatList - React Native throws
+        // "Changing numColumns on the fly is not supported". Keying on the
+        // mode forces a fresh list instead, which is the documented approach.
+        key={viewMode}
+        numColumns={viewMode === "grid" ? 2 : 1}
+        columnWrapperStyle={viewMode === "grid" ? styles.gridColumn : undefined}
+        data={groupedVisibleOrders}
+        keyExtractor={(group: any[]) => group[0]?.tableSessionId || group[0]?._id}
+        renderItem={({ item: tableOrders, index }: { item: any[]; index: number }) => (
+          // In grid mode each cell must be allowed to shrink to half the row,
+          // otherwise the cards keep their intrinsic width and overflow.
+          <View style={viewMode === "grid" ? styles.gridCell : undefined}>
+            {tableOrders.length === 1
+              ? renderOrderCard(tableOrders[0])
+              : renderSessionGroupCard(tableOrders, index)}
           </View>
         )}
-      </ScrollView>
+        style={styles.list}
+        // flexGrow so the empty state can claim the full height and centre
+        // itself in it; without it the container collapses to the content.
+        contentContainerStyle={[
+          styles.listContent,
+          groupedVisibleOrders.length === 0 && styles.listContentEmpty,
+        ]}
+        ItemSeparatorComponent={OrderSeparator}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        // Pull-to-refresh lives here now. This panel is rendered outside the
+        // dashboard's ScrollView (a FlatList cannot be nested in one), so it
+        // has to bring its own.
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handlePullRefresh}
+            colors={["#ea580c"]}
+            tintColor="#ea580c"
+          />
+        }
+        // Render a screenful up front and extend as the user scrolls, rather
+        // than committing the whole list on mount.
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={11}
+        removeClippedSubviews
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconRing}>
+              <View style={styles.emptyIconCircle}>
+                <ShoppingBag size={30} color="#ea580c" />
+              </View>
+            </View>
+            <Text style={styles.emptyTitle}>
+              {activeFilter === "all" ? "No orders yet" : "Nothing in this stage"}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {activeFilter === "all"
+                ? "New orders appear here the moment a customer checks out from a table QR."
+                : `No orders are currently marked ${activeFilter}.`}
+            </Text>
+            {activeFilter !== "all" && (
+              <TouchableOpacity
+                style={styles.emptyAction}
+                onPress={() => setActiveFilter("all")}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.emptyActionText}>View all orders</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        }
+      />
 
       {/* REVIEW ALL BATCHES MODAL */}
       <Modal visible={!!activeSession} animationType="slide" onRequestClose={() => setActiveSession(null)}>
@@ -438,25 +554,121 @@ const styles = StyleSheet.create({
   headerTextContainer: { flex: 1, paddingRight: 12 },
   title: { fontSize: 28, fontWeight: "900", color: "#111827" },
   subtitle: { fontSize: 14, color: "#6b7280", fontWeight: "500", marginTop: 4 },
-  refreshBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#fff7ed" },
-  refreshBtnText: { fontSize: 12, fontWeight: "bold", color: "#ea580c" },
 
-  filterRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 12 },
-  filterPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb" },
-  filterPillActive: { backgroundColor: "#ea580c", borderColor: "#ea580c" },
+  // flexGrow 0 stops the row taking leftover vertical space in the column,
+  // and alignItems center stops the pills being stretched to that height -
+  // which, against borderRadius 100, is what turned them into tall ovals.
+  // The pills scroll horizontally and the toggle is pinned beside them, so
+  // the toggle stays reachable however many statuses exist.
+  controlsRow: { flexDirection: "row", alignItems: "center" },
+  filterScroll: { flexGrow: 0, flexShrink: 1 },
+  viewToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingRight: 16,
+    paddingLeft: 4,
+  },
+  viewToggleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f3f4f6",
+  },
+  viewToggleBtnActive: { backgroundColor: "#ffedd5" },
+  gridColumn: { gap: 12 },
+  gridCell: { flex: 1 },
+  filterRow: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    // Breathing room under the app header - the row was butting straight up
+    // against it, which read as one crowded block rather than two bands.
+    paddingTop: 14,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  filterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  filterDot: { width: 7, height: 7, borderRadius: 4 },
   filterPillText: { fontSize: 13, fontWeight: "700", color: "#4b5563" },
   filterPillTextActive: { color: "#fff" },
-  filterCount: { backgroundColor: "#f3f4f6", paddingHorizontal: 6, borderRadius: 6, minWidth: 20, alignItems: "center" },
-  filterCountActive: { backgroundColor: "#fff" },
-  filterCountText: { fontSize: 11, fontWeight: "900", color: "#6b7280" },
-  filterCountTextActive: { color: "#ea580c" },
+  filterCount: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterCountActive: { backgroundColor: "rgba(255,255,255,0.9)" },
+  filterCountText: { fontSize: 11, fontWeight: "800", color: "#6b7280" },
 
   list: { flex: 1 },
   listContent: { padding: 16, paddingTop: 0, paddingBottom: 40 },
-  emptyState: { alignItems: "center", paddingVertical: 60, backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6" },
-  emptyIcon: { marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: "bold", color: "#374151" },
-  emptySubtitle: { fontSize: 14, color: "#6b7280", marginTop: 8, textAlign: "center", paddingHorizontal: 24 },
+  // Applied only while the list is empty, so ListEmptyComponent's flex:1 has
+  // a full-height container to centre itself within.
+  listContentEmpty: { flexGrow: 1, paddingBottom: 0 },
+  listSeparator: { height: 16 },
+  // No card: the message sits directly on the page background and fills the
+  // remaining height so it centres in the empty space rather than hugging the
+  // top of a box.
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  // Two concentric circles - a pale halo around a tinted disc - so the icon
+  // reads as a deliberate empty-state illustration rather than a lost glyph
+  // floating in white space.
+  emptyIconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#fff7ed",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#ffedd5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#1f2937" },
+  emptySubtitle: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6b7280",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  emptyAction: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  emptyActionText: { fontSize: 13, fontWeight: "800", color: "#ea580c" },
   grid: { gap: 16 },
   card: { backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#f9fafb", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },

@@ -10,7 +10,6 @@ import { Animated, Pressable } from 'react-native';
 import { Pencil, Trash2, Tag } from 'lucide-react-native';
 import MenuImage from '../MenuImage';
 
-// FIX 1: Define the shape of the 'item' object
 export interface MenuItem {
   _id: string;
   name: string;
@@ -19,10 +18,9 @@ export interface MenuItem {
   description?: string;
   imageUrl?: string;
   available: boolean;
-  [key: string]: any; // Allows for any extra fields from your backend
+  [key: string]: any; 
 }
 
-// FIX 2: Define the props expected by the component
 interface MenuItemCardProps {
   item: MenuItem;
   onEdit: (item: MenuItem) => void;
@@ -35,8 +33,6 @@ interface CustomToggleProps {
   onToggle: () => void;
 }
 
-// Compact switch (smaller than the old 50x26 version) so it fits the
-// single-row footer of the redesigned card without forcing extra height.
 const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -69,10 +65,6 @@ const CustomToggle: React.FC<CustomToggleProps> = ({ value, onToggle }) => {
   );
 };
 
-// Redesigned as a compact horizontal "digital menu" row - thumbnail on the
-// left, everything else stacked tightly on the right, icon-only actions -
-// so 3-4x more items fit on screen than the old full-width vertical card
-// (160px image + bordered Edit/Delete buttons) did.
 const MenuItemCard: React.FC<MenuItemCardProps> = ({
   item,
   onEdit,

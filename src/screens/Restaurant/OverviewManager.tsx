@@ -131,12 +131,6 @@ const OverviewManager = () => {
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Dashboard Overview</Text>
-        <Text style={styles.subtitle}>
-          A quick glance at your restaurant's performance and menu status.
-        </Text>
-      </View>
 
       {/* Revenue Breakdown Row */}
       <View style={styles.revenueRow}>

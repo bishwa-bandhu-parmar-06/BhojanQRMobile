@@ -6,7 +6,6 @@ import { Picker } from "@react-native-picker/picker";
 import { launchImageLibrary } from "react-native-image-picker";
 import { addMenuItem, updateMenuItem } from "../../API/menuApi";
 
-// FIX 1: Define the props interface
 interface MenuFormProps {
   menuItem?: any;
   onCancel: () => void;
@@ -16,10 +15,8 @@ interface MenuFormProps {
 const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // FIX 2: Tell TS this state can be a string, undefined, or null
   const [imagePreview, setImagePreview] = useState<string | null | undefined>(null);
 
-  // FIX 3: Tell TS this object can hold anything, so assigning an Asset to 'image' won't fail
   const [formData, setFormData] = useState<any>({ 
     name: "", 
     price: "", 

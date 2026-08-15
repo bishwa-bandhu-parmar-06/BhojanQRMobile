@@ -10,7 +10,7 @@ import {
 import Toast from 'react-native-toast-message';
 import { Picker } from '@react-native-picker/picker';
 
-// FIX 1: Define the shape of an individual order item
+// Define the shape of an individual order item
 export interface OrderItem {
   name: string;
   quantity: number;
@@ -18,18 +18,18 @@ export interface OrderItem {
   [key: string]: any;
 }
 
-// FIX 2: Define the shape of the main order object
+// Define the shape of the main order object
 export interface Order {
   _id: string;
   tableNumber: string | number;
   customerName: string;
   status: string;
   totalPrice: number | string;
-  items: OrderItem[] | OrderItem; // Handles cases where items might not be an array
+  items: OrderItem[] | OrderItem;
   [key: string]: any;
 }
 
-// FIX 3: Define the props expected by the component
+// Define the props expected by the component
 interface OrderDetailsProps {
   order: Order | null;
   onClose: () => void;
@@ -94,7 +94,6 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
 
           <Text style={styles.itemsTitle}>Ordered Items:</Text>
           <ScrollView style={styles.itemList} keyboardShouldPersistTaps="handled">
-            {/* FIX 4: Explicitly type 'item' and 'idx' */}
             {(Array.isArray(order.items) ? order.items : [order.items]).map(
               (item: any, idx: number) => (
                 <Text key={idx} style={styles.itemRow}>

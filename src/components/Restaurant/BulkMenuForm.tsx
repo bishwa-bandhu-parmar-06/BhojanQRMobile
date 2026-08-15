@@ -8,7 +8,6 @@ import RNFS from "react-native-fs";
 import { Picker } from "@react-native-picker/picker";
 import { launchImageLibrary } from "react-native-image-picker";
 
-// FIX: Clean import for the modern package
 import { pick, types } from "@react-native-documents/picker";
 
 interface BulkMenuFormProps {
