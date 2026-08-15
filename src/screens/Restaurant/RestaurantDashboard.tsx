@@ -43,6 +43,7 @@ import {
   Layers,
   RefreshCw,
   LifeBuoy,
+  History,
 } from "lucide-react-native";
 
 // IMPORT MANAGERS
@@ -60,6 +61,7 @@ import StaffManager from "./StaffManager";
 import HappyHoursManager from "./HappyHoursManager";
 import NotificationManager from "./NotificationManager";
 import SupportTicketManager from "./SupportTicketManager";
+import OrderHistoryManager from "./OrderHistoryManager";
 
 // The five bottom-bar destinations. Everything not here is reached through
 // "More", which keeps the bar readable - five is about the most that fits
@@ -86,6 +88,7 @@ const MORE_SECTIONS = [
   // Profile first: it is the one an owner opens most, and it now holds
   // everything about the restaurant itself.
   { id: "profile", label: "titles.profile", icon: User, hint: "more.profileHint" },
+  { id: "order_history", label: "titles.orderHistory", icon: History, hint: "more.orderHistoryHint" },
   { id: "staff", label: "titles.staff", icon: Users, hint: "more.staffHint" },
   { id: "marketing", label: "titles.happyHours", icon: Sparkles, hint: "more.happyHoursHint" },
   { id: "qr", label: "titles.qr", icon: QrCode, hint: "more.qrHint" },
@@ -104,6 +107,7 @@ const SECTION_LABELS: Record<string, string> = {
   profile: "titles.profile",
   notifications: "titles.notifications",
   support: "titles.support",
+  order_history: "titles.orderHistory",
 };
 
 // Menu actions, offered as rows on the More page. They are not sections - they
@@ -696,6 +700,9 @@ const RestaurantDashboard = () => {
           {activeTab === "qr" && canAccessTab("qr", { isOwner, can }) && <QRManager restaurant={restaurant} key={refreshKey} />}
           {activeTab === "notifications" && canAccessTab("notifications", { isOwner, can }) && (
             <NotificationManager key={refreshKey} onHeaderActions={handleSectionActions} />
+          )}
+          {activeTab === "order_history" && canAccessTab("order_history", { isOwner, can }) && (
+            <OrderHistoryManager key={refreshKey} onHeaderActions={handleSectionActions} />
           )}
           {activeTab === "support" && canAccessTab("support", { isOwner, can }) && (
             <SupportTicketManager

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,14 @@ import {
   closeTableSession,
   updateOrderStatus,
 } from "../../API/orderApi";
-import { ORDER_STATUS_FLOW, isActiveOrderStatus, getStatusMeta } from "../../constants/orderStatus";
+import {
+  ORDER_STATUS_FLOW,
+  isActiveOrderStatus,
+  getStatusMeta,
+  isArchivedOrder,
+  TERMINAL_ORDER_STATUSES,
+} from "../../constants/orderStatus";
+import { useArchiveTick } from "../../hooks/useArchiveTick";
 import BhojanQRLoader from "../../components/BhojanQRLoader";
 import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
@@ -64,6 +71,28 @@ const ActiveTablesManager = () => {
   const [closeTarget, setCloseTarget] = useState<string | null>(null);
 
   const statusQueueRef = useRef<Record<string, Promise<any>>>({});
+
+  // A table card represents the TABLE, so it stays until the session is
+  // closed - the table is still occupied even once every order on it is
+  // finished. What moves to Order History is the ORDER, so archived orders
+  // are stripped out of each session before anything renders from them, and
+  // the per-table counts below follow automatically.
+  const hasPendingArchive = useMemo(
+    () =>
+      sessions.some((s) =>
+        (s.orders || []).some((o: any) => TERMINAL_ORDER_STATUSES.includes(o?.status)),
+      ),
+    [sessions],
+  );
+  const now = useArchiveTick(hasPendingArchive);
+  const visibleSessions = useMemo(
+    () =>
+      sessions.map((s) => ({
+        ...s,
+        orders: (s.orders || []).filter((o: any) => !isArchivedOrder(o, now)),
+      })),
+    [sessions, now],
+  );
 
   const fetchSessions = async () => {
     try {
@@ -198,7 +227,7 @@ const ActiveTablesManager = () => {
         <View style={styles.emptyState}>
           <SectionError message="Failed to load active tables." onRetry={fetchSessions} />
         </View>
-      ) : sessions.length === 0 ? (
+      ) : visibleSessions.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconRing}>
             <View style={styles.emptyIconCircle}>
@@ -216,7 +245,7 @@ const ActiveTablesManager = () => {
            live tables, and the mapped ScrollView built every card up front on
            every socket-driven re-render. */
         <FlatList
-          data={sessions}
+          data={visibleSessions}
           keyExtractor={(session) => session._id}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.grid}
@@ -303,7 +332,7 @@ const ActiveTablesManager = () => {
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalScroll}>
               {/* Orders */}
               <Text style={styles.modalSectionLabel}>ACTIVE BATCHES</Text>
-              {sessions
+              {visibleSessions
                 .find((s) => String(s.tableNumber) === String(selectedTable))
                 ?.orders.map((order) => (
                   <View

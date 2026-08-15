@@ -17,6 +17,9 @@ export const TAB_ACCESS: Record<string, TabRule> = {
   // waiter blocked by a broken QR code is exactly who needs this, and the
   // ticket is raised against the restaurant either way.
   support: {},
+  // Same gate as the live boards it archives from: anyone allowed to see
+  // orders is allowed to see what those orders became.
+  order_history: { permission: ['view_pos', 'manage_orders'] },
 };
 
 const TAB_PRIORITY = ['overview', 'orders', 'active_tables', 'menu', 'marketing', 'qr', 'notifications'];

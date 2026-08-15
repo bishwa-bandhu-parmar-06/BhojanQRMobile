@@ -42,6 +42,7 @@ const en = {
     qr: "Table QR Codes",
     appSettings: "App Settings",
     support: "Help & Support",
+    orderHistory: "Order History",
   },
 
   more: {
@@ -51,6 +52,7 @@ const en = {
     qrHint: "Generate and print table codes",
     settingsHint: "Theme, language, alerts",
     supportHint: "Raise a query and track its status",
+    orderHistoryHint: "Completed orders, once they leave the board",
     addMenuItem: "Add Menu Item",
     addMenuItemHint: "Create a single dish",
     bulkAddMenu: "Bulk Add Menu",

@@ -49,6 +49,7 @@ const hi: DeepPartial<Translations> = {
     qr: "टेबल QR कोड",
     appSettings: "ऐप सेटिंग्स",
     support: "सहायता और सपोर्ट",
+    orderHistory: "ऑर्डर इतिहास",
   },
 
   more: {
@@ -58,6 +59,7 @@ const hi: DeepPartial<Translations> = {
     qrHint: "टेबल QR कोड बनाएँ और प्रिंट करें",
     settingsHint: "थीम, भाषा, अलर्ट",
     supportHint: "सवाल भेजें और उसकी स्थिति देखें",
+    orderHistoryHint: "पूरे हो चुके ऑर्डर, बोर्ड से हटने के बाद",
     addMenuItem: "मेन्यू आइटम जोड़ें",
     addMenuItemHint: "एक डिश बनाएँ",
     bulkAddMenu: "एक साथ मेन्यू जोड़ें",

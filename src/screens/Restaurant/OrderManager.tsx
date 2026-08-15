@@ -22,7 +22,13 @@ import {
 } from "lucide-react-native";
 
 import { getRestaurantOrders, updateOrderStatus } from "../../API/orderApi";
-import { ALL_ORDER_STATUSES, ORDER_STATUS_FLOW } from "../../constants/orderStatus";
+import {
+  ALL_ORDER_STATUSES,
+  ORDER_STATUS_FLOW,
+  isArchivedOrder,
+  TERMINAL_ORDER_STATUSES,
+} from "../../constants/orderStatus";
+import { useArchiveTick } from "../../hooks/useArchiveTick";
 import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
 import { socket } from "../../utils/socket";
@@ -126,21 +132,38 @@ const OrderManager = () => {
     setCancelReason("");
   };
 
+  // A Completed order stays on this board for a grace period and then belongs
+  // to Order History instead. Filtering once, here, means every bucket, count
+  // and pill below inherits the rule - there is no other view of `orders`
+  // that could disagree about what is still live.
+  //
+  // The tick only runs while something is actually waiting to be archived,
+  // so an idle board during a rush is not re-rendering on a timer.
+  const hasPendingArchive = useMemo(
+    () => orders.some((o) => TERMINAL_ORDER_STATUSES.includes(o.status)),
+    [orders],
+  );
+  const now = useArchiveTick(hasPendingArchive);
+  const liveOrders = useMemo(
+    () => orders.filter((o) => !isArchivedOrder(o, now)),
+    [orders, now],
+  );
+
   // One bucket per status in the 7-state lifecycle, generated from the
   // shared constant - mirrors the website's OrderManager.jsx segmentation.
   const segmentedOrders = useMemo(() => {
-    const buckets: Record<string, any[]> = { all: orders };
+    const buckets: Record<string, any[]> = { all: liveOrders };
     ALL_ORDER_STATUSES.forEach(({ value }) => {
-      buckets[value] = orders.filter((o) => o.status === value);
+      buckets[value] = liveOrders.filter((o) => o.status === value);
     });
     return buckets;
-  }, [orders]);
+  }, [liveOrders]);
 
   // Each filter carries its status's own colour from the shared constant, so
   // the selected pill reads as that status rather than every filter looking
   // identically orange - "Cancelled" selected should not look like "Ready".
   const filterTabs = [
-    { id: "all", label: "All", count: orders.length, color: "#ea580c" },
+    { id: "all", label: "All", count: liveOrders.length, color: "#ea580c" },
     ...ALL_ORDER_STATUSES.map(({ value, label, color }) => ({
       id: value,
       label,
@@ -376,7 +399,7 @@ const OrderManager = () => {
           on the unfiltered count, not the visible one - otherwise selecting a
           filter with no matches would hide the very pills you need to get
           back out of it. */}
-      {orders.length > 0 && (
+      {liveOrders.length > 0 && (
         <View style={styles.controlsRow}>
           <ScrollView
             horizontal
