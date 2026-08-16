@@ -1,12 +1,22 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
-import { User, Edit2 } from 'lucide-react-native';
+import { User, Edit2, LogOut } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import { useDispatch } from 'react-redux';
 import { updateAdminProfile } from '../../API/adminApi';
 import { updateUser } from '../../Features/AuthSlice';
 
-const AdminProfileManager = ({ admin, onRefreshParent }: { admin: any, onRefreshParent: () => Promise<void> }) => {
+const AdminProfileManager = ({
+  admin,
+  onRefreshParent,
+  onLogout,
+}: {
+  admin: any;
+  onRefreshParent: () => Promise<void>;
+  // Owned by the dashboard, which holds the confirmation modal and the
+  // navigation reset. This screen only decides where the button sits.
+  onLogout?: () => void;
+}) => {
   const [editMode, setEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState({ name: admin?.name || '', mobile: admin?.mobile || '' });
   const [isUpdating, setIsUpdating] = useState(false);
@@ -73,12 +83,25 @@ const AdminProfileManager = ({ admin, onRefreshParent }: { admin: any, onRefresh
           </View>
         )}
       </View>
+
+      {/* Signing out lives at the bottom of the account screen rather than in
+          the header, where it sat one tap from everything else an admin does.
+          Separated from the card above so it does not read as another profile
+          field. */}
+      {onLogout && (
+        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.8}>
+          <LogOut size={17} color="#ef4444" />
+          <Text style={styles.logoutBtnText}>Log Out</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 15, borderRadius: 14, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca' },
+  logoutBtnText: { fontSize: 14, fontWeight: '800', color: '#ef4444' },
   profileCard: { backgroundColor: '#ffffff', padding: 24, borderRadius: 20, alignItems: 'center', elevation: 2 },
   avatarBox: { width: 80, height: 80, backgroundColor: '#ffedd5', borderRadius: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#f97316', marginBottom: 12 },
   adminName: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },

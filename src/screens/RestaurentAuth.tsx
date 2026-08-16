@@ -15,6 +15,8 @@ import LinearGradient from "react-native-linear-gradient";
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import Toast from "react-native-toast-message";
 import { pick, types } from "@react-native-documents/picker";
+import LegalDocModal from "../components/LegalDocModal";
+import { PLATFORM_FEE_PERCENT, type LegalDocId } from "../constants/legalDocs";
 import { useDispatch } from "react-redux";
 
 // Make sure these paths are correct for your React Native project structure
@@ -82,6 +84,11 @@ const RestaurentAuth = () => {
   });
 
   const [govtIdDocument, setGovtIdDocument] = useState<any>(null);
+
+  // Consent is deliberately NOT part of restaurantData: it is not a profile
+  // field and must never be posted as one. It gates registration only.
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [openDoc, setOpenDoc] = useState<LegalDocId | null>(null);
 
   const handleChange = (name: string, value: string) => {
     setRestaurantData((prev) => ({ ...prev, [name]: value }));
@@ -163,6 +170,14 @@ const RestaurentAuth = () => {
       Toast.show({ type: "error", text1: "Validation Error", text2: "Email and Password are required" });
       return false;
     }
+    if (!isLogin && !acceptedTerms) {
+      Toast.show({
+        type: "error",
+        text1: "Please accept the terms",
+        text2: "Tick the box to confirm you agree before registering",
+      });
+      return false;
+    }
     if (!isLogin) {
       if (!restaurantName || !ownerName || !mobile || !idNumber) {
         Toast.show({ type: "error", text1: "Validation Error", text2: "Please fill all required fields" });
@@ -218,6 +233,10 @@ const RestaurentAuth = () => {
         formData.append("password", restaurantData.password);
         formData.append("idType", restaurantData.idType);
         formData.append("idNumber", restaurantData.idNumber);
+        // The server records this with a timestamp and IP; it is required and
+        // registration is rejected without it. Sent as a string because
+        // multipart carries everything as text.
+        formData.append("termsAccepted", "true");
 
         if (govtIdDocument) {
           // Only the three keys RN's FormData understands for a file part.
@@ -243,6 +262,7 @@ const RestaurentAuth = () => {
             setIsLogin(true);
             setRestaurantData((prev) => ({ ...prev, password: "", idNumber: "" }));
             setGovtIdDocument(null);
+    setAcceptedTerms(false);
           }, 2000);
         }
       }
@@ -486,6 +506,41 @@ const RestaurentAuth = () => {
                   </TouchableOpacity>
                 )}
 
+                {!isLogin && (
+                  <View style={styles.consentRow}>
+                    <TouchableOpacity
+                      style={[styles.checkbox, acceptedTerms && styles.checkboxOn]}
+                      onPress={() => setAcceptedTerms((v) => !v)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: acceptedTerms }}
+                      accessibilityLabel="Accept terms and policies"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {acceptedTerms && <View style={styles.checkboxTick} />}
+                    </TouchableOpacity>
+
+                    {/* Each policy opens full screen over the form and closes
+                        back to it, so a half-filled registration survives
+                        someone actually reading what they are agreeing to. */}
+                    <Text style={styles.consentText}>
+                      I have read and agree to the{" "}
+                      <Text style={styles.consentLink} onPress={() => setOpenDoc("terms")}>
+                        Terms &amp; Conditions
+                      </Text>
+                      ,{" "}
+                      <Text style={styles.consentLink} onPress={() => setOpenDoc("privacy")}>
+                        Privacy Policy
+                      </Text>{" "}
+                      and{" "}
+                      <Text style={styles.consentLink} onPress={() => setOpenDoc("refund")}>
+                        Refund Policy
+                      </Text>
+                      , including the {PLATFORM_FEE_PERCENT}% platform fee on each
+                      transaction.
+                    </Text>
+                  </View>
+                )}
+
                 {/* SUBMIT BUTTON */}
                 <TouchableOpacity
                   style={[
@@ -533,6 +588,7 @@ const RestaurentAuth = () => {
             </View>
           </View>
         </ScrollView>
+        <LegalDocModal docId={openDoc} onClose={() => setOpenDoc(null)} />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -725,6 +781,21 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#f9fafb',
   },
+  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 11, marginTop: 4, marginBottom: 16 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#d1d5db",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxOn: { backgroundColor: "#ea580c", borderColor: "#ea580c" },
+  checkboxTick: { width: 9, height: 9, borderRadius: 2, backgroundColor: "#ffffff" },
+  consentText: { flex: 1, fontSize: 12.5, lineHeight: 19, color: "#6b7280" },
+  consentLink: { color: "#ea580c", fontWeight: "800", textDecorationLine: "underline" },
   uploadButtonFilled: { borderStyle: "solid", borderColor: "#fed7aa", backgroundColor: "#fff7ed" },
   uploadButtonMeta: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
   uploadClear: { padding: 6 },

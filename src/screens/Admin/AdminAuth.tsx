@@ -16,8 +16,6 @@ import LinearGradient from 'react-native-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Mail,
-  Phone,
-  User,
   Lock,
   Shield,
   Clock,
@@ -28,21 +26,24 @@ import {
 import { useDispatch } from 'react-redux';
 import { loginSuccess } from '../../Features/AuthSlice';
 
-import { registerAdmin, loginAdmin } from '../../API/adminApi';
+import { loginAdmin } from '../../API/adminApi';
 import { setToken } from '../../utils/tokenStorage';
 
+// Sign-in only. There is no admin sign-up here, and there was never a
+// working one: POST /admin/register sits behind requireSuperAdminSecret (see
+// server/routes/adminRoutes.js), a header only whoever runs the platform
+// holds. The form could not succeed - it collected a name and a mobile
+// number and then failed on a header the app has no way to send. New admins
+// arrive by invitation from an existing one instead.
 const AdminAuth = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
-  const [isLogin, setIsLogin] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
-  
+
   const [adminData, setAdminData] = useState({
-    name: '',
     email: '',
-    mobile: '',
     password: '',
   });
 
@@ -51,13 +52,9 @@ const AdminAuth = () => {
   };
 
   const validateForm = (): boolean => {
-    const { email, password, name, mobile } = adminData;
+    const { email, password } = adminData;
     if (!email || !password) {
       Toast.show({ type: 'error', text1: 'Email and Password are required' });
-      return false;
-    }
-    if (!isLogin && (!name || !mobile)) {
-      Toast.show({ type: 'error', text1: 'Please fill all fields for registration' });
       return false;
     }
     if (password.length < 8) {
@@ -72,17 +69,10 @@ const AdminAuth = () => {
 
     setIsLoading(true);
     try {
-      let response;
-      if (isLogin) {
-        response = await loginAdmin({
-          email: adminData.email,
-          password: adminData.password,
-        });
-      } else {
-        response = await registerAdmin(adminData);
-      }
-
-      const { data } = response;
+      const { data } = await loginAdmin({
+        email: adminData.email,
+        password: adminData.password,
+      });
 
       if (data.success) {
         if (data.token) {
@@ -94,10 +84,7 @@ const AdminAuth = () => {
           dispatch(loginSuccess({ user: userData }));
         }
 
-        Toast.show({
-          type: 'success',
-          text1: isLogin ? 'Welcome back!' : 'Account created successfully!',
-        });
+        Toast.show({ type: 'success', text1: 'Welcome back!' });
 
         // reset, not navigate: AdminAuth is a root-stack screen, so navigating
         // would leave it underneath and the back gesture would return a
@@ -116,12 +103,6 @@ const AdminAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setAdminData({ name: '', email: '', mobile: '', password: '' });
-    setShowPassword(false);
   };
 
   return (
@@ -165,50 +146,13 @@ const AdminAuth = () => {
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.iconBox}>
-                  {isLogin ? (
-                    <Lock size={32} color="#16a34a" />
-                  ) : (
-                    <User size={32} color="#f97316" />
-                  )}
+                  <Lock size={32} color="#16a34a" />
                 </View>
-                <Text style={styles.formTitle}>
-                  {isLogin ? 'Welcome Back' : 'Create Account'}
-                </Text>
-                <Text style={styles.formSubtitle}>
-                  {isLogin
-                    ? 'Please sign in to continue'
-                    : 'Start managing your restaurant today'}
-                </Text>
+                <Text style={styles.formTitle}>Welcome Back</Text>
+                <Text style={styles.formSubtitle}>Please sign in to continue</Text>
               </View>
 
               <View style={styles.form}>
-                {!isLogin && (
-                  <>
-                    <View style={styles.inputWrapper}>
-                      <User size={20} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
-                        style={styles.input}
-                        placeholder="Full Name"
-                        placeholderTextColor="#9ca3af"
-                        value={adminData.name}
-                        onChangeText={(val) => handleChange('name', val)}
-                      />
-                    </View>
-
-                    <View style={styles.inputWrapper}>
-                      <Phone size={20} color="#9ca3af" style={styles.inputIcon} />
-                      <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
-                        style={styles.input}
-                        placeholder="Mobile Number"
-                        placeholderTextColor="#9ca3af"
-                        keyboardType="phone-pad"
-                        value={adminData.mobile}
-                        onChangeText={(val) => handleChange('mobile', val)}
-                      />
-                    </View>
-                  </>
-                )}
-
                 <View style={styles.inputWrapper}>
                   <Mail size={20} color="#9ca3af" style={styles.inputIcon} />
                   <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
@@ -244,22 +188,16 @@ const AdminAuth = () => {
                   </TouchableOpacity>
                 </View>
 
-                {isLogin && (
-                  <TouchableOpacity
-                    style={styles.forgotLink}
-                    onPress={() => navigation.navigate('ForgotPassword', { role: 'admin' })}
-                  >
-                    <Text style={styles.forgotLinkText}>Forgot password?</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  style={styles.forgotLink}
+                  onPress={() => navigation.navigate('ForgotPassword', { role: 'admin' })}
+                >
+                  <Text style={styles.forgotLinkText}>Forgot password?</Text>
+                </TouchableOpacity>
 
                 {/* SUBMIT BUTTON */}
                 <TouchableOpacity
-                  style={[
-                    styles.submitBtn,
-                    isLogin ? styles.btnGreen : styles.btnOrange,
-                    isLoading && styles.btnDisabled,
-                  ]}
+                  style={[styles.submitBtn, styles.btnGreen, isLoading && styles.btnDisabled]}
                   onPress={handleSubmit}
                   disabled={isLoading}
                   activeOpacity={0.8}
@@ -270,23 +208,18 @@ const AdminAuth = () => {
                       <Text style={styles.submitBtnText}>Processing...</Text>
                     </View>
                   ) : (
-                    <Text style={styles.submitBtnText}>
-                      {isLogin ? 'Sign In' : 'Register Now'}
-                    </Text>
+                    <Text style={styles.submitBtnText}>Sign In</Text>
                   )}
                 </TouchableOpacity>
               </View>
 
-              {/* TOGGLE FOOTER */}
+              {/* Replaces the "Create one here" toggle. Admin accounts are
+                  issued by an existing admin, so this says where an account
+                  comes from instead of offering a form that cannot work. */}
               <View style={styles.footer}>
                 <Text style={styles.footerText}>
-                  {isLogin ? "Don't have an account? " : 'Already registered? '}
+                  Admin access is issued by invitation.
                 </Text>
-                <TouchableOpacity onPress={toggleMode}>
-                  <Text style={styles.footerLink}>
-                    {isLogin ? 'Create one here' : 'Sign in instead'}
-                  </Text>
-                </TouchableOpacity>
               </View>
             </View>
           </ScrollView>
@@ -462,10 +395,6 @@ const styles = StyleSheet.create({
   btnGreen: {
     backgroundColor: '#16a34a',
     shadowColor: '#16a34a',
-  },
-  btnOrange: {
-    backgroundColor: '#f97316',
-    shadowColor: '#f97316',
   },
   btnDisabled: {
     backgroundColor: '#9ca3af',

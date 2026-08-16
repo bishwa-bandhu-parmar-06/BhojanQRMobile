@@ -37,6 +37,11 @@ const NotificationBridge = () => {
   const alertSound = useSelector((state: any) => state.preferences?.alertSound);
 
   const isRestaurantSide = user?.role === "restaurant" || user?.role === "staff";
+  const isAdmin = user?.role === "admin";
+  // Both sides get tray notifications; only the events differ. Splitting this
+  // into two components would duplicate the permission prompt, the channel
+  // setup and the tap handler for no gain.
+  const isSignedIn = isRestaurantSide || isAdmin;
 
   // A QUEUE, not a single value. Two tables calling within seconds of each
   // other is normal at service time, and holding only the latest would drop
@@ -57,15 +62,15 @@ const NotificationBridge = () => {
   // actually signed in to a restaurant, so the prompt lands with a reason
   // rather than on the login screen.
   useEffect(() => {
-    if (!isRestaurantSide) {
+    if (!isSignedIn) {
       setWaiterCalls([]);
       return;
     }
     ensureNotificationSetup();
-  }, [isRestaurantSide]);
+  }, [isSignedIn]);
 
   useEffect(() => {
-    if (!isRestaurantSide) return;
+    if (!isSignedIn) return;
 
     const notify = async (title: string, body: string, channel: "order" | "service") => {
       const { orderAlerts: on, alertSound: sound } = prefsRef.current;
@@ -123,14 +128,32 @@ const NotificationBridge = () => {
       );
     };
 
-    socket.on("order:status-changed", onOrderActivity);
-    socket.on("service:requested", onServiceRequest);
+    // Admin-side. One generic event carrying its own title and message, so a
+    // new kind of platform notification needs no client release - the server
+    // decides what it says. Covers restaurant registrations, feedback,
+    // contact enquiries, support tickets and new admins joining.
+    const onAdminNotification = (payload: any) => {
+      notify(
+        payload?.title || "BhojanQR",
+        payload?.message || "Something needs your attention.",
+        "order",
+      );
+    };
+
+    if (isRestaurantSide) {
+      socket.on("order:status-changed", onOrderActivity);
+      socket.on("service:requested", onServiceRequest);
+    }
+    if (isAdmin) {
+      socket.on("notification:new", onAdminNotification);
+    }
 
     return () => {
       socket.off("order:status-changed", onOrderActivity);
       socket.off("service:requested", onServiceRequest);
+      socket.off("notification:new", onAdminNotification);
     };
-  }, [isRestaurantSide, dispatch]);
+  }, [isSignedIn, isRestaurantSide, isAdmin, dispatch]);
 
   // Tapping a notification. Kept separate from the posting effect because it
   // must be registered even when signed out - that is the case it exists for.
@@ -144,6 +167,14 @@ const NotificationBridge = () => {
         // Already signed in: go straight there, no questions.
         navigateWhenReady("MainApp", {
           screen: "RestaurantDashboard",
+          params: { openTab: "notifications" },
+        });
+        return;
+      }
+
+      if (signedIn && user.role === "admin") {
+        navigateWhenReady("MainApp", {
+          screen: "AdminDashboard",
           params: { openTab: "notifications" },
         });
         return;

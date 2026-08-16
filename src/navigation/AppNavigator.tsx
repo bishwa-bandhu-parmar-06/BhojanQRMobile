@@ -82,7 +82,15 @@ const MainNavigator = () => {
         component={RestaurantDashboard}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="AdminDashboard" component={AdminDashboard} />
+      {/* Same reason as RestaurantDashboard above: the admin dashboard draws
+          its own bar, which names the current panel and carries the bell.
+          Without this it took the navigator's Header as well and rendered two
+          logos stacked - a bare one on top of its own. */}
+      <Stack.Screen
+        name="AdminDashboard"
+        component={AdminDashboard}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} />
     </Stack.Navigator>
   );

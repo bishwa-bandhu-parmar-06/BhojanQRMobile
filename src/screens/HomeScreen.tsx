@@ -18,6 +18,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { clearCart } from "../Features/CartSlice";
 
 import ContactForm from "../components/ContactForm";
+import FeedbackShowcase from "../components/FeedbackShowcase";
 
 import BhojanSupportBot from "../components/BhojanSupportBot";
 
@@ -220,6 +221,11 @@ const Home = () => {
               <Text style={styles.secondaryButtonText}>Contact Support</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Published testimonials, after Contact. Renders nothing until an
+              admin has promoted at least one, so the page never shows an
+              empty "what people say" heading. */}
+          <FeedbackShowcase />
 
           {/* GLOBAL FOOTER */}
           <View style={styles.footerContainer}>
