@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import Toast from "react-native-toast-message";
 import {
   UtensilsCrossed,
@@ -11,6 +11,11 @@ import {
   CalendarDays,
   CalendarRange,
   Trophy,
+  LayoutGrid,
+  Sparkles,
+  Users,
+  History,
+  ChevronRight,
 } from "lucide-react-native";
 
 import { getDashboardStats } from "../../API/restaurentApi";
@@ -29,10 +34,23 @@ interface SoldItem {
   revenue: number;
 }
 
-const OverviewManager = () => {
+type OverviewManagerProps = {
+  // Supplied by the dashboard, which owns `activeTab`. Overview cannot
+  // navigate on its own - it is a panel inside the dashboard, not a screen in
+  // the navigator - so tapping a card asks the parent to switch section.
+  onNavigate?: (tabId: string) => void;
+};
+
+const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
   const [stats, setStats] = useState({
     totalMenuItems: 0,
     activeMenuItems: 0,
+    totalStaff: 0,
+    staffByRole: [] as { role: string; count: number }[],
+    totalOffers: 0,
+    activeOffers: 0,
+    activeTables: 0,
+    completedOrders: 0,
     outOfStockItems: 0,
     totalOrders: 0,
     totalRevenue: 0,
@@ -60,6 +78,12 @@ const OverviewManager = () => {
           setStats({
             totalMenuItems: menuStats?.totalMenuItems ?? 0,
             activeMenuItems: menuStats?.activeMenuItems ?? 0,
+            totalStaff: response.data.data?.staffStats?.totalStaff ?? 0,
+            staffByRole: response.data.data?.staffStats?.byRole ?? [],
+            totalOffers: response.data.data?.offerStats?.totalOffers ?? 0,
+            activeOffers: response.data.data?.offerStats?.activeOffers ?? 0,
+            activeTables: response.data.data?.tableStats?.activeTables ?? 0,
+            completedOrders: response.data.data?.historyStats?.completedOrders ?? 0,
             outOfStockItems: menuStats?.outOfStockItems ?? 0,
             totalOrders: revenueStats?.totalOrders ?? 0,
             totalRevenue: revenueStats?.totalRevenue ?? 0,
@@ -123,6 +147,90 @@ const OverviewManager = () => {
     return (
       <View style={styles.container}>
         <SectionError message="Failed to load dashboard statistics." onRetry={fetchStats} />
+
+        {/* ─── Sections an owner can jump straight into ─────────────────
+            Each tile is the headline number for a screen, and tapping it
+            goes there. The overview was previously read-only, so seeing
+            "3 active tables" meant finding the Tables tab yourself. */}
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onNavigate?.("active_tables")}
+          activeOpacity={onNavigate ? 0.7 : 1}
+          disabled={!onNavigate}
+        >
+          <View style={[styles.iconContainer, { backgroundColor: "#eff6ff" }]}>
+            <LayoutGrid size={28} color="#2563eb" />
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.cardLabel}>Active Tables</Text>
+            <Text style={styles.cardValue}>{stats.activeTables}</Text>
+          </View>
+          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onNavigate?.("marketing")}
+          activeOpacity={onNavigate ? 0.7 : 1}
+          disabled={!onNavigate}
+        >
+          <View style={[styles.iconContainer, { backgroundColor: "#fef3c7" }]}>
+            <Sparkles size={28} color="#d97706" />
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.cardLabel}>Happy Hours</Text>
+            <Text style={styles.cardValue}>{stats.activeOffers}</Text>
+            {/* Two numbers matter here and they differ: how many offers are
+                switched on now, out of how many exist at all. */}
+            <Text style={styles.cardHint}>
+              {stats.activeOffers} active of {stats.totalOffers}
+            </Text>
+          </View>
+          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onNavigate?.("staff")}
+          activeOpacity={onNavigate ? 0.7 : 1}
+          disabled={!onNavigate}
+        >
+          <View style={[styles.iconContainer, { backgroundColor: "#f5f3ff" }]}>
+            <Users size={28} color="#7c3aed" />
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.cardLabel}>Staff</Text>
+            <Text style={styles.cardValue}>{stats.totalStaff}</Text>
+            {/* The role split is what an owner actually reads - "4 staff" says
+                far less than "2 waiters, 1 chef, 1 manager". */}
+            {stats.staffByRole.length > 0 && (
+              <Text style={styles.cardHint} numberOfLines={2}>
+                {stats.staffByRole
+                  .map((r) => `${r.count} ${r.role.toLowerCase()}`)
+                  .join(" · ")}
+              </Text>
+            )}
+          </View>
+          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onNavigate?.("order_history")}
+          activeOpacity={onNavigate ? 0.7 : 1}
+          disabled={!onNavigate}
+        >
+          <View style={[styles.iconContainer, { backgroundColor: "#f0fdf4" }]}>
+            <History size={28} color="#16a34a" />
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.cardLabel}>Order History</Text>
+            <Text style={styles.cardValue}>{stats.completedOrders}</Text>
+          </View>
+          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
+        </TouchableOpacity>
+
       </View>
     );
   }
@@ -180,7 +288,12 @@ const OverviewManager = () => {
       <View style={styles.grid}>
 
         {/* Menu Items Card */}
-        <View style={styles.card}>
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onNavigate?.("menu")}
+          activeOpacity={onNavigate ? 0.7 : 1}
+          disabled={!onNavigate}
+        >
           <View style={[styles.iconContainer, { backgroundColor: "#fff7ed" }]}>
             <UtensilsCrossed size={28} color="#ea580c" />
           </View>
@@ -188,7 +301,8 @@ const OverviewManager = () => {
             <Text style={styles.cardLabel}>Total Menu Items</Text>
             <Text style={styles.cardValue}>{stats.totalMenuItems}</Text>
           </View>
-        </View>
+          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
+        </TouchableOpacity>
 
         {/* Active Items Card */}
         <View style={styles.card}>
@@ -432,6 +546,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5, // tracking-wider
     marginBottom: 4, // mb-1
   },
+  // The secondary line under a headline number - the role split on Staff,
+  // the active-of-total on Happy Hours.
+  cardHint: { fontSize: 11, color: '#9ca3af', fontWeight: '600', marginTop: 3 },
   cardValue: {
     fontSize: 28, // text-3xl
     fontWeight: "900", // font-black

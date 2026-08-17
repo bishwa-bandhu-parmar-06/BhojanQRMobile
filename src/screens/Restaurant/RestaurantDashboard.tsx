@@ -749,7 +749,18 @@ const RestaurantDashboard = () => {
               </TouchableOpacity>
             </View>
           )}
-          {activeTab === "overview" && canAccessTab("overview", { isOwner, can }) && <OverviewManager key={refreshKey} />}
+          {activeTab === "overview" && canAccessTab("overview", { isOwner, can }) && (
+            <OverviewManager
+              key={refreshKey}
+              // Overview is a panel, not a navigator screen, so it asks the
+              // dashboard to switch section. Gated on the same permission
+              // check the tab itself uses - a card must not open something
+              // this account is not allowed to see.
+              onNavigate={(tabId) => {
+                if (canAccessTab(tabId, { isOwner, can })) setActiveTab(tabId);
+              }}
+            />
+          )}
           {activeTab === "staff" && canAccessTab("staff", { isOwner, can }) && (
             <StaffManager key={refreshKey} onHeaderActions={handleSectionActions} />
           )}

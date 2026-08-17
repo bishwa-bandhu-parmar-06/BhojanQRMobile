@@ -92,6 +92,18 @@ const NotificationBridge = () => {
     };
 
     const onOrderActivity = (payload: any) => {
+      // Only a genuinely NEW order earns a banner. The server sets
+      // notifyRestaurant on that one case; every other status change still
+      // arrives (the boards listen to the same event to refresh themselves)
+      // but passes silently, because it is the restaurant that just made the
+      // change and they do not need telling what they did.
+      //
+      // The customer-facing wording - "Hi Alice, your order has been
+      // received" - now goes only to the order:<id> room the customer's
+      // tracking page joins. It used to be sent here too, which is why staff
+      // were reading messages addressed to their own customers.
+      if (!payload?.notifyRestaurant) return;
+
       notify(
         payload?.title || "New order",
         payload?.body || "A new order has arrived.",

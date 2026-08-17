@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, TextInput, Platform } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, TextInput } from "react-native";
 import Toast from "react-native-toast-message";
 import RNShare from "react-native-share";
 import RNFS from "react-native-fs";
 import { FileSpreadsheet, Download } from "lucide-react-native";
 
-import { downloadSalesReport } from "../../API/reportApi";
-import { arrayBufferToBase64 } from "../../utils/base64";
+import { getToken } from "../../utils/tokenStorage";
+import { API_BASE_URL } from "../../config/env";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const thisMonthISO = () => new Date().toISOString().slice(0, 7);
@@ -37,31 +37,95 @@ const SalesReportPanel = () => {
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      const response = await downloadSalesReport(buildParams());
-      const base64 = arrayBufferToBase64(response.data);
-      const fileName = `BhojanQR_Sales_Report_${activeTab}.xlsx`;
-      const destPath = Platform.OS === "android"
-        ? `${RNFS.DownloadDirectoryPath}/${fileName}`
-        : `${RNFS.DocumentDirectoryPath}/${fileName}`;
-
-      await RNFS.writeFile(destPath, base64, "base64");
-      if (Platform.OS === "android") {
-        await RNFS.scanFile(destPath);
+      // Streamed straight to disk by RNFS rather than pulled through axios.
+      //
+      // The old path asked axios for `responseType: "arraybuffer"` and then
+      // base64-encoded it. That works in a browser; React Native's XHR does
+      // not give axios a real ArrayBuffer, so what came back was a mangled
+      // string and every download failed. RNFS.downloadFile writes the bytes
+      // as they arrive, which also means a large report never has to sit in
+      // memory on a phone.
+      const token = getToken();
+      if (!token) {
+        Toast.show({
+          type: "error",
+          text1: "Session expired",
+          text2: "Sign in again to download reports",
+        });
+        return;
       }
 
-      Toast.show({ type: "success", text1: "Report downloaded successfully!" });
+      const query = new URLSearchParams(buildParams() as any).toString();
+      const fileName = `BhojanQR_Sales_Report_${activeTab}_${todayISO()}.xlsx`;
+      // Written to the app's own directory, not the public Downloads folder.
+      // Android 10+ scoped storage blocks a direct write there without
+      // permissions the app does not request; the share sheet below is how
+      // the file reaches Drive, WhatsApp or the user's own storage.
+      const destPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      const { promise } = RNFS.downloadFile({
+        fromUrl: `${API_BASE_URL}/reports/sales?${query}`,
+        toFile: destPath,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const result = await promise;
+
+      // RNFS resolves even on a 4xx/5xx - it reports the status rather than
+      // throwing, so the body would be written to disk as an .xlsx full of
+      // JSON error text unless this is checked.
+      if (result.statusCode !== 200) {
+        const detail =
+          result.statusCode === 403
+            ? "You do not have permission to export reports"
+            : result.statusCode === 404
+              ? "No orders found for this period"
+              : `Server returned ${result.statusCode}`;
+        Toast.show({ type: "error", text1: "Could not download the report", text2: detail });
+        await RNFS.unlink(destPath).catch(() => {});
+        return;
+      }
+
+      // An empty file means the request succeeded but produced nothing; a
+      // 0-byte .xlsx opens as a corrupt workbook, which is a worse outcome
+      // than being told there was no data.
+      const stat = await RNFS.stat(destPath);
+      if (Number(stat.size) === 0) {
+        Toast.show({
+          type: "error",
+          text1: "The report was empty",
+          text2: "There are no orders in this period",
+        });
+        await RNFS.unlink(destPath).catch(() => {});
+        return;
+      }
+
+      Toast.show({
+        type: "success",
+        text1: "Report ready",
+        text2: `${(Number(stat.size) / 1024).toFixed(0)} KB - choose where to save it`,
+      });
 
       await RNShare.open({
-        url: Platform.OS === "android" ? `file://${destPath}` : destPath,
+        url: `file://${destPath}`,
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename: fileName,
         title: "Sales Report",
         failOnCancel: false,
       });
-    } catch {
-      Toast.show({ type: "error", text1: "Failed to generate report. Please try again." });
+    } catch (error: any) {
+      // The old handler was a bare `catch {}`, so every failure looked
+      // identical and told you nothing about which one it was.
+      const message =
+        error?.message?.includes("Network")
+          ? "Could not reach the server"
+          : error?.message || "Please try again";
+      Toast.show({ type: "error", text1: "Failed to download the report", text2: message });
     } finally {
       setIsDownloading(false);
     }
   };
+
 
   return (
     <View style={styles.card}>
