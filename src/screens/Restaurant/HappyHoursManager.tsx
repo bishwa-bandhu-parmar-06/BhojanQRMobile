@@ -34,6 +34,7 @@ import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
 import type { HeaderAction } from "../../components/Header";
 import { formatMoney } from "../../utils/money";
+import TimePickerSheet, { formatTime12 } from "../../components/TimePickerSheet";
 
 const DAYS = [
   { value: "mon", label: "Mon" },
@@ -78,6 +79,8 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
   const [editingOffer, setEditingOffer] = useState<any>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Which schedule field the time sheet is editing; null = closed.
+  const [timeField, setTimeField] = useState<"startTime" | "endTime" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -626,24 +629,40 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
             <Text style={styles.fieldLabel}>Schedule *</Text>
             <View style={styles.timeRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.timeLabel}>Start (HH:MM)</Text>
-                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
-                  style={styles.input}
-                  placeholder="14:00"
-                  value={form.schedule.startTime}
-                  onChangeText={(v) => setForm((p) => ({ ...p, schedule: { ...p.schedule, startTime: v } }))}
-                />
+                <Text style={styles.timeLabel}>Start Time</Text>
+                <TouchableOpacity
+                  style={styles.timeField}
+                  onPress={() => setTimeField("startTime")}
+                  accessibilityRole="button"
+                >
+                  <Clock size={16} color="#ea580c" />
+                  <Text style={styles.timeFieldText}>{formatTime12(form.schedule.startTime)}</Text>
+                </TouchableOpacity>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.timeLabel}>End (HH:MM)</Text>
-                <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
-                  style={styles.input}
-                  placeholder="17:00"
-                  value={form.schedule.endTime}
-                  onChangeText={(v) => setForm((p) => ({ ...p, schedule: { ...p.schedule, endTime: v } }))}
-                />
+                <Text style={styles.timeLabel}>End Time</Text>
+                <TouchableOpacity
+                  style={styles.timeField}
+                  onPress={() => setTimeField("endTime")}
+                  accessibilityRole="button"
+                >
+                  <Clock size={16} color="#ea580c" />
+                  <Text style={styles.timeFieldText}>{formatTime12(form.schedule.endTime)}</Text>
+                </TouchableOpacity>
               </View>
             </View>
+            <TimePickerSheet
+              visible={timeField !== null}
+              title={timeField === "endTime" ? "End Time" : "Start Time"}
+              value={timeField ? form.schedule[timeField] : "14:00"}
+              onClose={() => setTimeField(null)}
+              onConfirm={(v) =>
+                setForm((p) => ({
+                  ...p,
+                  schedule: { ...p.schedule, [timeField as "startTime" | "endTime"]: v },
+                }))
+              }
+            />
 
             <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Days</Text>
             <View style={styles.chipWrap}>
@@ -887,6 +906,22 @@ const styles = StyleSheet.create({
   checkboxChecked: { borderColor: "#ea580c", backgroundColor: "#ea580c" },
   checkboxDot: { width: 7, height: 7, borderRadius: 2, backgroundColor: "#fff" },
   timeRow: { flexDirection: "row", gap: 12 },
+  timeField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 46,
+    backgroundColor: "#f9fafb",
+  },
+  timeFieldText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1f2937",
+  },
   timeLabel: { fontSize: 10, fontWeight: "800", color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 },
   dayChip: { width: 48, paddingVertical: 10, borderRadius: 10, backgroundColor: "#f3f4f6", alignItems: "center" },
   dayChipActive: { backgroundColor: "#ea580c" },

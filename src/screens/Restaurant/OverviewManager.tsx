@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, useWindowDimensions } from "react-native";
 import Toast from "react-native-toast-message";
 import LinearGradient from "react-native-linear-gradient";
+import { LineChart } from "react-native-chart-kit";
 import {
   UtensilsCrossed,
   ShoppingBag,
@@ -130,6 +131,10 @@ const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
   const [worstSellingItem, setWorstSellingItem] = useState<SoldItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // Chart width = screen minus the screen padding (16*2) and card padding
+  // (16*2); chart-kit needs an absolute pixel width up front.
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = windowWidth - 64;
 
   const fetchStats = async () => {
       try {
@@ -309,7 +314,6 @@ const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
     );
   }
 
-  const maxRevenue = Math.max(1, ...weeklyChartData.map((d) => d.revenue));
   const weekTotal = weeklyChartData.reduce((sum, d) => sum + d.revenue, 0);
   const todayIdx = weeklyChartData.length - 1;
 
@@ -357,37 +361,39 @@ const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
               <Text style={styles.chartTotalText}>₹{compactINR(weekTotal)}</Text>
             </View>
           </View>
-          <View style={styles.chartRow}>
-            {weeklyChartData.map((day, idx) => {
-              const isToday = idx === todayIdx;
-              return (
-                <View key={idx} style={styles.barColumn}>
-                  <Text style={[styles.barValue, isToday && styles.barValueToday]}>
-                    {day.revenue > 0 ? `₹${compactINR(day.revenue)}` : ""}
-                  </Text>
-                  <View
-                    style={[
-                      styles.barFill,
-                      isToday && styles.barFillToday,
-                      { height: `${Math.max(5, (day.revenue / maxRevenue) * 100)}%` },
-                    ]}
-                  />
-                </View>
-              );
-            })}
-          </View>
-          {/* Day labels live in their own row below the baseline; the same
-              flex:1 columns keep them centred under their bars. */}
-          <View style={styles.chartLabelsRow}>
-            {weeklyChartData.map((day, idx) => (
-              <Text
-                key={idx}
-                style={[styles.barLabel, idx === todayIdx && styles.barLabelToday]}
-              >
-                {idx === todayIdx ? "Today" : day.name}
-              </Text>
-            ))}
-          </View>
+          {/* Smooth revenue curve with a soft orange area fill - the same
+              7 numbers the old bar row showed, but the shape of the week
+              (up, down, flat) is readable at a glance. */}
+          <LineChart
+            data={{
+              labels: weeklyChartData.map((d, i) => (i === todayIdx ? "Today" : d.name)),
+              datasets: [{ data: weeklyChartData.map((d) => d.revenue) }],
+            }}
+            width={chartWidth}
+            height={190}
+            bezier
+            fromZero
+            withInnerLines={false}
+            withOuterLines={false}
+            withVerticalLines={false}
+            segments={3}
+            formatYLabel={(v) => `₹${compactINR(Number(v))}`}
+            chartConfig={{
+              backgroundGradientFrom: "#ffffff",
+              backgroundGradientTo: "#ffffff",
+              decimalPlaces: 0,
+              color: (opacity = 1) => `rgba(234, 88, 12, ${opacity})`,
+              labelColor: () => "#94a3b8",
+              fillShadowGradientFrom: "#fb923c",
+              fillShadowGradientFromOpacity: 0.35,
+              fillShadowGradientTo: "#ffffff",
+              fillShadowGradientToOpacity: 0.02,
+              strokeWidth: 3,
+              propsForDots: { r: "4", strokeWidth: "2", stroke: "#ea580c", fill: "#ffffff" },
+              propsForLabels: { fontSize: 10, fontWeight: "700" },
+            }}
+            style={styles.lineChart}
+          />
         </View>
       )}
 
@@ -655,54 +661,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#ea580c",
   },
-  chartRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    height: 150,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-    paddingBottom: 0,
-  },
-  barColumn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: "100%",
-    gap: 5,
-  },
-  barValue: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#94a3b8",
-  },
-  barValueToday: {
-    color: "#ea580c",
-    fontWeight: "900",
-  },
-  barFill: {
-    width: 22,
-    backgroundColor: "#ffedd5",
-    borderTopLeftRadius: 7,
-    borderTopRightRadius: 7,
-  },
-  barFillToday: {
-    backgroundColor: "#ea580c",
-  },
-  chartLabelsRow: {
-    flexDirection: "row",
-    marginTop: 6,
-  },
-  barLabel: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#94a3b8",
-  },
-  barLabelToday: {
-    color: "#ea580c",
-    fontWeight: "900",
+  lineChart: {
+    // chart-kit reserves a wide gutter for y-labels; pulling it left keeps
+    // the plot visually centred inside the card.
+    marginLeft: -14,
+    borderRadius: 16,
   },
 
   // All-time orders / revenue pair

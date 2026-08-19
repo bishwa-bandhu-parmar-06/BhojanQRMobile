@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, TextInput } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
 import Toast from "react-native-toast-message";
 import RNShare from "react-native-share";
 import RNFS from "react-native-fs";
-import { FileSpreadsheet, Download } from "lucide-react-native";
+import { FileSpreadsheet, Download, CalendarDays } from "lucide-react-native";
 import { downloadSalesReport } from '../../API/reportApi';
 
 import { getToken } from "../../utils/tokenStorage";
 import { arrayBufferToBase64 } from "../../utils/base64";
+import CalendarSheet, { formatCalendarValue, type CalendarMode } from "../../components/CalendarSheet";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const thisMonthISO = () => new Date().toISOString().slice(0, 7);
@@ -44,6 +45,15 @@ const SalesReportPanel = () => {
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [isDownloading, setIsDownloading] = useState(false);
+  // Which calendar the sheet is editing; null = closed. The pickers replace
+  // free-text YYYY-MM-DD inputs, so a typo can no longer reach the server's
+  // date validation.
+  const [picker, setPicker] = useState<null | {
+    mode: CalendarMode;
+    title: string;
+    value: string;
+    onPick: (v: string) => void;
+  }>(null);
 
   const buildParams = () => {
     if (activeTab === "daily") return { type: "daily", date };
@@ -64,6 +74,15 @@ const SalesReportPanel = () => {
           type: "error",
           text1: "Session expired",
           text2: "Sign in again to download reports",
+        });
+        return;
+      }
+
+      if (activeTab === "custom" && endDate < startDate) {
+        Toast.show({
+          type: "error",
+          text1: "Invalid range",
+          text2: "The end date is before the start date",
         });
         return;
       }
@@ -164,20 +183,65 @@ const SalesReportPanel = () => {
       </ScrollView>
 
       {activeTab === "daily" && (
-        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="YYYY-MM-DD" value={date} onChangeText={setDate} />
+        <TouchableOpacity
+          style={styles.dateField}
+          onPress={() => setPicker({ mode: "date", title: "Report Date", value: date, onPick: setDate })}
+          accessibilityRole="button"
+        >
+          <CalendarDays size={16} color="#ea580c" />
+          <Text style={styles.dateFieldText}>{formatCalendarValue("date", date)}</Text>
+        </TouchableOpacity>
       )}
       {activeTab === "monthly" && (
-        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="YYYY-MM" value={month} onChangeText={setMonth} />
+        <TouchableOpacity
+          style={styles.dateField}
+          onPress={() => setPicker({ mode: "month", title: "Report Month", value: month, onPick: setMonth })}
+          accessibilityRole="button"
+        >
+          <CalendarDays size={16} color="#ea580c" />
+          <Text style={styles.dateFieldText}>{formatCalendarValue("month", month)}</Text>
+        </TouchableOpacity>
       )}
       {activeTab === "yearly" && (
-        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="YYYY" keyboardType="numeric" value={year} onChangeText={setYear} />
+        <TouchableOpacity
+          style={styles.dateField}
+          onPress={() => setPicker({ mode: "year", title: "Report Year", value: year, onPick: setYear })}
+          accessibilityRole="button"
+        >
+          <CalendarDays size={16} color="#ea580c" />
+          <Text style={styles.dateFieldText}>{formatCalendarValue("year", year)}</Text>
+        </TouchableOpacity>
       )}
       {activeTab === "custom" && (
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { flex: 1 }]} placeholder="Start YYYY-MM-DD" value={startDate} onChangeText={setStartDate} />
-          <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { flex: 1 }]} placeholder="End YYYY-MM-DD" value={endDate} onChangeText={setEndDate} />
+        <View style={styles.rangeRow}>
+          <TouchableOpacity
+            style={[styles.dateField, styles.rangeField]}
+            onPress={() => setPicker({ mode: "date", title: "From", value: startDate, onPick: setStartDate })}
+            accessibilityRole="button"
+          >
+            <CalendarDays size={16} color="#ea580c" />
+            <Text style={styles.dateFieldText} numberOfLines={1}>{formatCalendarValue("date", startDate)}</Text>
+          </TouchableOpacity>
+          <Text style={styles.rangeArrow}>→</Text>
+          <TouchableOpacity
+            style={[styles.dateField, styles.rangeField]}
+            onPress={() => setPicker({ mode: "date", title: "To", value: endDate, onPick: setEndDate })}
+            accessibilityRole="button"
+          >
+            <CalendarDays size={16} color="#ea580c" />
+            <Text style={styles.dateFieldText} numberOfLines={1}>{formatCalendarValue("date", endDate)}</Text>
+          </TouchableOpacity>
         </View>
       )}
+
+      <CalendarSheet
+        visible={picker !== null}
+        mode={picker?.mode ?? "date"}
+        title={picker?.title ?? ""}
+        value={picker?.value ?? ""}
+        onClose={() => setPicker(null)}
+        onConfirm={(v) => picker?.onPick(v)}
+      />
 
       <TouchableOpacity style={[styles.downloadBtn, isDownloading && styles.downloadBtnDisabled]} onPress={handleDownload} disabled={isDownloading}>
         {isDownloading ? (
@@ -206,7 +270,11 @@ const styles = StyleSheet.create({
   tabPillActive: { backgroundColor: "#ea580c" },
   tabPillText: { fontSize: 12, fontWeight: "700", color: "#6b7280" },
   tabPillTextActive: { color: "#fff" },
-  input: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 10, paddingHorizontal: 12, height: 44, fontSize: 14, backgroundColor: "#f9fafb", color: "#1f2937", marginBottom: 12 },
+  dateField: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 10, paddingHorizontal: 12, height: 46, backgroundColor: "#f9fafb", marginBottom: 12 },
+  dateFieldText: { fontSize: 14, fontWeight: "800", color: "#1f2937" },
+  rangeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rangeField: { flex: 1 },
+  rangeArrow: { fontSize: 14, fontWeight: "800", color: "#9ca3af", marginBottom: 12 },
   downloadBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#ea580c", height: 48, borderRadius: 12 },
   downloadBtnDisabled: { opacity: 0.6 },
   downloadBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },

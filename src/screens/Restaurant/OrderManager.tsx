@@ -11,6 +11,7 @@ import {
   Modal,
 } from "react-native";
 import Toast from "react-native-toast-message";
+import LinearGradient from "react-native-linear-gradient";
 import { useSelector } from "react-redux";
 import {
   ShoppingBag,
@@ -267,6 +268,11 @@ const OrderManager = () => {
       (sum: number, it: any) => sum + (it.quantity || 0),
       0,
     );
+    // Where this order sits in the linear flow - stages before it render as
+    // quietly "done", the current one is filled solid, later ones stay
+    // neutral. Cancelled is a side branch (-1): everything reads neutral and
+    // the red accent carries the state.
+    const currentIdx = ORDER_STATUS_FLOW.findIndex((st) => st.value === order.status);
 
     return (
       <View key={order._id} style={styles.row}>
@@ -293,17 +299,32 @@ const OrderManager = () => {
                 money on it makes you open every row to find the one you are
                 looking for. It is one small right-aligned number. */}
             <Text style={styles.rowTotal}>₹{formatMoney(order.totalPrice)}</Text>
-            <ChevronRight size={15} color="#9ca3af" />
+            <ChevronRight size={15} color="#cbd5e1" />
           </TouchableOpacity>
 
-          <Text style={styles.rowMeta}>
-            {itemCount} item{itemCount === 1 ? "" : "s"} ·{" "}
-            {new Date(order.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-            {order.paymentStatus === "Paid" ? " · Paid" : " · Payment pending"}
-          </Text>
+          {/* The status used to live only in the accent colour; a named chip
+              means nobody has to memorise the palette to read the board. */}
+          <View style={styles.rowMetaRow}>
+            <View style={[styles.statusChip, { backgroundColor: `${meta.color}14` }]}>
+              <View style={[styles.statusChipDot, { backgroundColor: meta.color }]} />
+              <Text style={[styles.statusChipText, { color: meta.color }]}>{order.status}</Text>
+            </View>
+            <Text style={styles.rowMeta} numberOfLines={1}>
+              {itemCount} item{itemCount === 1 ? "" : "s"} ·{" "}
+              {new Date(order.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </Text>
+            <Text
+              style={[
+                styles.rowPayment,
+                order.paymentStatus === "Paid" ? styles.textGreen : styles.textAmber,
+              ]}
+            >
+              {order.paymentStatus === "Paid" ? "Paid" : "Unpaid"}
+            </Text>
+          </View>
 
           {/* Horizontally scrollable so all six stages plus cancel stay
               reachable on a narrow phone without shrinking the targets.
@@ -317,8 +338,9 @@ const OrderManager = () => {
             style={styles.rowActionsScroll}
             contentContainerStyle={styles.rowActions}
           >
-            {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }) => {
+            {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }, idx) => {
               const isCurrent = order.status === value;
+              const isDone = currentIdx > -1 && idx < currentIdx;
               return (
                 <TouchableOpacity
                   key={value}
@@ -326,13 +348,15 @@ const OrderManager = () => {
                   style={[
                     styles.iconBtn,
                     isCurrent
-                      ? { backgroundColor: `${color}1a`, borderColor: color }
-                      : styles.iconBtnInactive,
+                      ? { backgroundColor: color, borderColor: color }
+                      : isDone
+                        ? { backgroundColor: `${color}14`, borderColor: "transparent" }
+                        : styles.iconBtnInactive,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={label}
                 >
-                  <Icon size={16} color={isCurrent ? color : "#9ca3af"} />
+                  <Icon size={16} color={isCurrent ? "#ffffff" : isDone ? color : "#9ca3af"} />
                 </TouchableOpacity>
               );
             })}
@@ -462,86 +486,117 @@ const OrderManager = () => {
     </View>
   );
 
+  // A combined session is deliberately NOT another white row: it renders on
+  // an orange gradient with light-on-dark type, so a table running multiple
+  // batches can never be misread as one more single order while scanning.
   const renderSessionGroupCard = (tableOrders: any[], index: number, mode: "list" | "grid") => {
     const displayTableNumber = tableOrders[0].tableNumber || "N/A";
     const grandTotal = tableOrders.reduce((sum, o) => sum + o.totalPrice, 0);
     const orderCount = tableOrders.length;
 
-    // LIST: the same slim shape as a single order, so a session does not
-    // break the rhythm of the column. The explanatory paragraph is dropped -
-    // it says the same thing every time, and "2 batches" already says it.
+    const openSession = () =>
+      setActiveSession({ tableNumber: displayTableNumber, orders: tableOrders });
+
+    const header = (
+      <View style={styles.sessionTop}>
+        <View style={styles.sessionIconBox}>
+          <Layers size={16} color="#ffffff" />
+        </View>
+        <View style={styles.sessionTitleWrap}>
+          <Text style={styles.sessionLabel}>Combined Session</Text>
+          <Text style={styles.sessionTable}>Table {displayTableNumber}</Text>
+        </View>
+        <View style={styles.sessionTotalWrap}>
+          <Text style={styles.sessionBatchCount}>
+            {orderCount} {orderCount === 1 ? "batch" : "batches"}
+          </Text>
+          <Text style={styles.sessionTotal} numberOfLines={1} adjustsFontSizeToFit>
+            ₹{formatMoney(grandTotal)}
+          </Text>
+        </View>
+      </View>
+    );
+
+    // One near-white chip per batch, each carrying its own status dot - the
+    // kitchen can see "batch 1 is Ready, batch 2 still Preparing" without
+    // opening the review screen.
+    const batchChips = (limit: number) => (
+      <View style={styles.sessionChipsRow}>
+        {tableOrders.slice(0, limit).map((o, i) => {
+          const m = getStatusMeta(o.status);
+          return (
+            <View key={o._id} style={styles.sessionChip}>
+              <View style={[styles.sessionChipDot, { backgroundColor: m.color }]} />
+              <Text style={styles.sessionChipText} numberOfLines={1}>
+                #{i + 1} {o.status} · ₹{formatMoney(o.totalPrice)}
+              </Text>
+            </View>
+          );
+        })}
+        {orderCount > limit && (
+          <View style={styles.sessionChip}>
+            <Text style={styles.sessionChipText}>+{orderCount - limit} more</Text>
+          </View>
+        )}
+      </View>
+    );
+
+    // LIST: compact - header, batch chips, one hint line. Whole card taps
+    // through to the batch review screen.
     if (mode === "list") {
       return (
-        <TouchableOpacity
-          key={`session-group-${index}`}
-          style={styles.row}
-          activeOpacity={0.8}
-          onPress={() => setActiveSession({ tableNumber: displayTableNumber, orders: tableOrders })}
-        >
-          <View style={[styles.rowAccent, { backgroundColor: "#ea580c" }]} />
-          <View style={styles.rowBody}>
-            <View style={styles.rowTop}>
-              <View style={styles.rowTableBadge}>
-                <Text style={styles.rowTableBadgeText}>T{displayTableNumber}</Text>
-              </View>
-              <Text style={styles.rowCustomer} numberOfLines={1}>
-                Combined session
-              </Text>
-              <Text style={styles.rowTotal}>₹{formatMoney(grandTotal)}</Text>
+        <TouchableOpacity key={`session-group-${index}`} activeOpacity={0.85} onPress={openSession}>
+          <LinearGradient
+            colors={["#fb923c", "#ea580c", "#c2410c"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1.2, y: 1.1 }}
+            style={styles.sessionGradient}
+          >
+            {header}
+            {batchChips(3)}
+            <View style={styles.sessionHintRow}>
+              <Text style={styles.sessionHint}>Tap to review all batches</Text>
+              <ChevronRight size={15} color="#ffedd5" />
             </View>
-
-            <View style={styles.rowSessionMetaRow}>
-              <Layers size={11} color="#c2410c" />
-              <Text style={styles.rowMeta}>
-                {orderCount} batches · tap to review
-              </Text>
-              <ChevronRight size={15} color="#9ca3af" />
-            </View>
-          </View>
+          </LinearGradient>
         </TouchableOpacity>
       );
     }
 
+    // GRID: the fuller treatment - every batch listed with its customer,
+    // plus an explicit review button.
     return (
-      <View key={`session-group-${index}`} style={styles.sessionCard}>
-        <View style={styles.sessionCardHeader}>
-          <View style={styles.sessionBadgeRow}>
-            <View style={styles.sessionTableBadge}>
-              <Text style={styles.sessionTableBadgeText}>Table {displayTableNumber}</Text>
-            </View>
-            <View style={styles.sessionBatchBadge}>
-              <Layers size={11} color="#c2410c" />
-              <Text style={styles.sessionBatchBadgeText} numberOfLines={1}>
-                {orderCount} BATCHES
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.sessionCardTitle}>Combined QR Session</Text>
+      <LinearGradient
+        key={`session-group-${index}`}
+        colors={["#fb923c", "#ea580c", "#c2410c"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1.2, y: 1.1 }}
+        style={styles.sessionGradient}
+      >
+        {header}
+        <View style={styles.sessionBatchList}>
+          {tableOrders.map((o, i) => {
+            const m = getStatusMeta(o.status);
+            return (
+              <View key={o._id} style={styles.sessionBatchRow}>
+                <Text style={styles.sessionBatchIndex}>#{i + 1}</Text>
+                <Text style={styles.sessionBatchName} numberOfLines={1}>
+                  {o.customerName}
+                </Text>
+                <View style={[styles.sessionChipDot, { backgroundColor: m.color }]} />
+                <Text style={styles.sessionBatchStatus}>{o.status}</Text>
+                <Text style={styles.sessionBatchTotal}>₹{formatMoney(o.totalPrice)}</Text>
+              </View>
+            );
+          })}
         </View>
-
-        <View style={styles.sessionCardBody}>
-          <Text style={styles.sessionCardDesc}>
-            Customers at this table have placed multiple separate orders during their current visit.
-            This group contains <Text style={styles.sessionCardDescBold}>{orderCount} order batches</Text>.
-          </Text>
-          <View style={styles.sessionTotalRow}>
-            <Text style={styles.sessionTotalLabel}>Aggregate Total</Text>
-            <Text style={styles.sessionTotalValue} numberOfLines={1} adjustsFontSizeToFit>
-              ₹{formatMoney(grandTotal)}
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.sessionReviewBtn}
-          onPress={() => setActiveSession({ tableNumber: displayTableNumber, orders: tableOrders })}
-        >
+        <TouchableOpacity style={styles.sessionReviewBtn} onPress={openSession} activeOpacity={0.85}>
           <Text style={styles.sessionReviewBtnText} numberOfLines={1}>
             Review batches
           </Text>
-          <ChevronRight size={18} color="#fff" />
+          <ChevronRight size={17} color="#c2410c" />
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
     );
   };
 
@@ -781,7 +836,9 @@ const OrderManager = () => {
               <Text style={styles.modalTitle}>Table {activeSession?.tableNumber}</Text>
               <Text style={styles.modalSubtitle}>
                 {(activeSession?.orders.length || 0) > 1
-                  ? `All ${activeSession?.orders.length} batches from this visit`
+                  ? `${activeSession?.orders.length} batches · ₹${formatMoney(
+                      (activeSession?.orders || []).reduce((sum, o) => sum + o.totalPrice, 0),
+                    )} this visit`
                   : activeSession?.orders[0]?.customerName
                     ? `Order from ${activeSession.orders[0].customerName}`
                     : "Order detail"}
@@ -952,8 +1009,19 @@ const styles = StyleSheet.create({
   // flex so a long name truncates instead of shoving the total off the row.
   rowCustomer: { flex: 1, fontSize: 15, fontWeight: "800", color: "#1f2937" },
   rowTotal: { fontSize: 15, fontWeight: "900", color: "#15803d" },
-  rowMeta: { fontSize: 11, fontWeight: "600", color: "#9ca3af" },
-  rowSessionMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rowMeta: { flexShrink: 1, fontSize: 11, fontWeight: "600", color: "#9ca3af" },
+  rowMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rowPayment: { marginLeft: "auto", fontSize: 11, fontWeight: "800" },
+  statusChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+  statusChipDot: { width: 6, height: 6, borderRadius: 3 },
+  statusChipText: { fontSize: 10, fontWeight: "800" },
   // flexGrow 0 keeps the strip its own height inside the row's column.
   rowActionsScroll: { flexGrow: 0, flexShrink: 0 },
   rowActions: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2 },
@@ -996,23 +1064,90 @@ const styles = StyleSheet.create({
   btnCancel: { backgroundColor: "#fef2f2", borderColor: "transparent" },
   reasonInput: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 10, paddingHorizontal: 12, height: 44, fontSize: 14, backgroundColor: "#f9fafb", width: "100%", marginTop: 8 },
 
-  // Combined QR Session group card
-  sessionCard: { backgroundColor: "#fff7ed", borderRadius: 16, borderWidth: 1, borderColor: "#fed7aa", overflow: "hidden" },
-  sessionCardHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#ffedd5", backgroundColor: "#ffedd5" },
-  sessionBadgeRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 6 },
-  sessionTableBadge: { backgroundColor: "#ea580c", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  sessionTableBadgeText: { color: "#fff", fontSize: 11, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
-  sessionBatchBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fed7aa", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  sessionBatchBadgeText: { color: "#c2410c", fontSize: 10, fontWeight: "900" },
-  sessionCardTitle: { fontWeight: "bold", color: "#1f2937", fontSize: 15 },
-  sessionCardBody: { padding: 16 },
-  sessionCardDesc: { fontSize: 13, color: "#57534e", lineHeight: 19, marginBottom: 14 },
-  sessionCardDescBold: { color: "#ea580c", fontWeight: "bold" },
-  sessionTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4, backgroundColor: "#ffffff", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#ffedd5" },
-  sessionTotalLabel: { fontSize: 11, fontWeight: "bold", color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 },
-  sessionTotalValue: { flexShrink: 1, fontSize: 18, fontWeight: "900", color: "#16a34a" },
-  sessionReviewBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#ea580c", paddingVertical: 14, margin: 16, marginTop: 0, borderRadius: 12 },
-  sessionReviewBtnText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
+  // Combined session - light-on-gradient, so it can never be confused with
+  // a white single-order row.
+  sessionGradient: {
+    borderRadius: 18,
+    padding: 14,
+    shadowColor: "#ea580c",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  sessionTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sessionIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sessionTitleWrap: { flex: 1, minWidth: 0 },
+  sessionLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#ffedd5",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  sessionTable: { fontSize: 17, fontWeight: "900", color: "#ffffff", marginTop: 1 },
+  sessionTotalWrap: { alignItems: "flex-end" },
+  sessionBatchCount: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#ffedd5",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  sessionTotal: { fontSize: 18, fontWeight: "900", color: "#ffffff", marginTop: 1 },
+  sessionChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
+  sessionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 100,
+    maxWidth: "100%",
+  },
+  sessionChipDot: { width: 7, height: 7, borderRadius: 4 },
+  sessionChipText: { flexShrink: 1, fontSize: 11, fontWeight: "800", color: "#7c2d12" },
+  sessionHintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.25)",
+    paddingTop: 10,
+  },
+  sessionHint: { fontSize: 12, fontWeight: "700", color: "#ffedd5" },
+  sessionBatchList: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 12,
+  },
+  sessionBatchRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+  sessionBatchIndex: { fontSize: 11, fontWeight: "900", color: "#ffedd5", width: 22 },
+  sessionBatchName: { flex: 1, fontSize: 13, fontWeight: "800", color: "#ffffff" },
+  sessionBatchStatus: { fontSize: 11, fontWeight: "700", color: "#ffedd5" },
+  sessionBatchTotal: { fontSize: 13, fontWeight: "900", color: "#ffffff" },
+  sessionReviewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#ffffff",
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  sessionReviewBtnText: { color: "#c2410c", fontWeight: "900", fontSize: 14 },
 
   // Review-all-batches modal
   modalContainer: { flex: 1, backgroundColor: "#f3f4f6" },
