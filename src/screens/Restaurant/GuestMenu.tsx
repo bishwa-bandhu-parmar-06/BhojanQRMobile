@@ -38,6 +38,7 @@ import {
   formatCountdown,
   type Offer,
 } from '../../utils/pricingEngine';
+import { formatMoney } from '../../utils/money';
 
 interface MenuItem {
   _id: string;
@@ -256,11 +257,11 @@ const GuestMenu = () => {
           <View style={styles.priceBadge}>
             {bestOffer ? (
               <>
-                <Text style={styles.priceTextStrike}>₹{bestOffer.basePrice}</Text>
-                <Text style={styles.priceText}>₹{bestOffer.discountedPrice}</Text>
+                <Text style={styles.priceTextStrike}>₹{formatMoney(bestOffer.basePrice)}</Text>
+                <Text style={styles.priceText}>₹{formatMoney(bestOffer.discountedPrice)}</Text>
               </>
             ) : (
-              <Text style={styles.priceText}>₹{item.price}</Text>
+              <Text style={styles.priceText}>₹{formatMoney(item.price)}</Text>
             )}
           </View>
         </View>
@@ -440,7 +441,7 @@ const GuestMenu = () => {
             <Text style={styles.fabText}>View Order</Text>
             <View style={styles.fabDivider} />
             <Text style={styles.fabPrice}>
-              ₹{cartItems.reduce((acc: number, item: any) => acc + item.price * item.quantity, 0)}
+              ₹{formatMoney(cartItems.reduce((acc: number, item: any) => acc + item.price * item.quantity, 0))}
             </Text>
           </TouchableOpacity>
         </View>

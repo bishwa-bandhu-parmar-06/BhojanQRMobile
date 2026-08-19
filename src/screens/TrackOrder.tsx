@@ -30,6 +30,7 @@ import { getOrderByToken } from "../API/orderApi";
 import { useOrderSocket } from "../hooks/useOrderSocket";
 import { ORDER_STATUS_FLOW, CANCELLED_STATUS } from "../constants/orderStatus";
 import SectionError from "../components/SectionError";
+import { formatMoney } from "../utils/money";
 
 const TrackOrder = () => {
   const navigation = useNavigation<any>();
@@ -222,7 +223,7 @@ const TrackOrder = () => {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.tableText}>Order Total</Text>
-                  <Text style={styles.totalText}>₹{order.totalPrice}</Text>
+                  <Text style={styles.totalText}>₹{formatMoney(order.totalPrice)}</Text>
                 </View>
               </View>
 
@@ -237,7 +238,7 @@ const TrackOrder = () => {
                         <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
                       </View>
                     </View>
-                    <Text style={styles.itemPrice}>₹{item.price * item.quantity}</Text>
+                    <Text style={styles.itemPrice}>₹{formatMoney(item.price * item.quantity)}</Text>
                   </View>
                 ))}
               </View>

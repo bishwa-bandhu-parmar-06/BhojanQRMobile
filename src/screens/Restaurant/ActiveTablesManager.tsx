@@ -402,7 +402,7 @@ const ActiveTablesManager = () => {
                         <Text style={styles.orderItemText}>
                           <Text style={styles.orderItemQty}>{it.quantity}x</Text> {it.name}
                         </Text>
-                        <Text style={styles.orderItemPrice}>₹{it.price * it.quantity}</Text>
+                        <Text style={styles.orderItemPrice}>₹{formatMoney(it.price * it.quantity)}</Text>
                       </View>
                     ))}
                     {canUpdateStatus && order.status !== "Cancelled" && (

@@ -9,6 +9,7 @@ import { Animated, Pressable } from 'react-native';
 
 import { Pencil, Trash2, Tag } from 'lucide-react-native';
 import MenuImage from '../MenuImage';
+import { formatMoney } from "../../utils/money";
 
 export interface MenuItem {
   _id: string;
@@ -97,7 +98,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
             <Tag size={10} color="#ea580c" />
             <Text style={styles.categoryText} numberOfLines={1}>{item.category}</Text>
           </View>
-          <Text style={styles.priceText}>₹{item.price}</Text>
+          <Text style={styles.priceText}>₹{formatMoney(item.price)}</Text>
         </View>
 
         <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>

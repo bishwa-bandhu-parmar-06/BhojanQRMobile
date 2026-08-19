@@ -12,6 +12,7 @@ import { Copy, Image as ImageIcon, FileText, CheckCircle, Home, MapPin } from "l
 import Clipboard from '@react-native-clipboard/clipboard';
 
 import { getPublicRestaurantDetails } from "../../API/restaurentApi";
+import { formatMoney } from "../../utils/money";
 
 const OrderSuccess = () => {
   const route = useRoute<any>();
@@ -154,16 +155,16 @@ const OrderSuccess = () => {
               <View key={index} style={styles.itemRow}>
                 <View>
                   <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemQty}>{item.quantity} x ₹{item.price}</Text>
+                  <Text style={styles.itemQty}>{item.quantity} x ₹{formatMoney(item.price)}</Text>
                 </View>
-                <Text style={styles.itemTotal}>₹{item.quantity * item.price}</Text>
+                <Text style={styles.itemTotal}>₹{formatMoney(item.quantity * item.price)}</Text>
               </View>
             ))}
           </View>
 
           <View style={styles.totalBlock}>
             <Text style={styles.totalLabel}>Total Paid</Text>
-            <Text style={styles.totalAmount}>₹{total}</Text>
+            <Text style={styles.totalAmount}>₹{formatMoney(total)}</Text>
           </View>
         </View>
       </ViewShot>

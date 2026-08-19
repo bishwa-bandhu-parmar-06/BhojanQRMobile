@@ -37,6 +37,7 @@ import {
   formatCountdown,
   PRICE_LOCK_DURATION_MS,
 } from '../utils/pricingEngine';
+import { formatMoney } from '../utils/money';
 
 const Cart = () => {
   const route = useRoute<any>();
@@ -328,7 +329,7 @@ const Cart = () => {
           <Text style={styles.mainTitle}>Your <Text style={{ color: '#ea580c' }}>Cart</Text></Text>
           <View style={styles.totalBox}>
             <Text style={styles.totalBoxLabel}>Total</Text>
-            <Text style={styles.totalBoxAmount}>₹{totalAmount}</Text>
+            <Text style={styles.totalBoxAmount}>₹{formatMoney(totalAmount)}</Text>
           </View>
         </View>
 
@@ -345,9 +346,9 @@ const Cart = () => {
                   <Text style={styles.cartItemName} numberOfLines={1}>{item.name}</Text>
                   <View style={styles.cartPriceRow}>
                     {item.offerId && item.originalPrice ? (
-                      <Text style={styles.cartItemPriceStrike}>₹{item.originalPrice}</Text>
+                      <Text style={styles.cartItemPriceStrike}>₹{formatMoney(item.originalPrice)}</Text>
                     ) : null}
-                    <Text style={styles.cartItemPrice}>₹{item.price}</Text>
+                    <Text style={styles.cartItemPrice}>₹{formatMoney(item.price)}</Text>
                   </View>
                   {item.offerId && lockRemaining != null && lockRemaining > 0 && (
                     <Text style={styles.lockText}>
@@ -420,7 +421,7 @@ const Cart = () => {
             ) : (
               <>
                 <ShoppingCart size={20} color="#fff" />
-                <Text style={styles.payBtnText}>Pay ₹{totalAmount}</Text>
+                <Text style={styles.payBtnText}>Pay ₹{formatMoney(totalAmount)}</Text>
               </>
             )}
           </TouchableOpacity>

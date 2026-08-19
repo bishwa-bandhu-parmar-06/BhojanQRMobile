@@ -15,6 +15,7 @@ import { getPublicMenu } from '../../API/menuApi';
 import BhojanQRLoader from '../BhojanQRLoader';
 import MenuImage from '../MenuImage';
 import SectionError from '../SectionError';
+import { formatMoney } from "../../utils/money";
 
 const PublicMenu = () => {
   const route = useRoute<any>();
@@ -72,7 +73,7 @@ const PublicMenu = () => {
       <View style={styles.imgContainer}>
         <MenuImage uri={item.imageUrl} style={styles.image} />
         <View style={styles.priceBadge}>
-          <Text style={styles.priceText}>₹{item.price}</Text>
+          <Text style={styles.priceText}>₹{formatMoney(item.price)}</Text>
         </View>
       </View>
       <View style={styles.content}>

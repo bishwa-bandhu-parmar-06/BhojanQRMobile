@@ -759,6 +759,10 @@ const RestaurantDashboard = () => {
               onNavigate={(tabId) => {
                 if (canAccessTab(tabId, { isOwner, can })) setActiveTab(tabId);
               }}
+              // Same rule, exposed as a predicate so Overview can hide the
+              // tiles this account could never open instead of rendering
+              // taps that silently do nothing.
+              canOpenTab={(tabId) => canAccessTab(tabId, { isOwner, can })}
             />
           )}
           {activeTab === "staff" && canAccessTab("staff", { isOwner, can }) && (

@@ -1,24 +1,26 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import Toast from "react-native-toast-message";
+import LinearGradient from "react-native-linear-gradient";
 import {
   UtensilsCrossed,
   ShoppingBag,
   IndianRupee,
-  AlertCircle,
   TrendingUp,
   TrendingDown,
   CalendarDays,
-  CalendarRange,
   Trophy,
   LayoutGrid,
   Sparkles,
   Users,
   History,
   ChevronRight,
+  QrCode,
+  User,
 } from "lucide-react-native";
 
 import { getDashboardStats } from "../../API/restaurentApi";
+import { formatMoney } from "../../utils/money";
 import SalesReportPanel from "./SalesReportPanel";
 import { SkeletonBlock } from "../../components/Skeleton";
 import SectionError from "../../components/SectionError";
@@ -39,9 +41,72 @@ type OverviewManagerProps = {
   // navigate on its own - it is a panel inside the dashboard, not a screen in
   // the navigator - so tapping a card asks the parent to switch section.
   onNavigate?: (tabId: string) => void;
+  // Same access rule the dashboard applies to its own tabs. Without it a
+  // staff account would see tiles whose taps silently do nothing - the
+  // dashboard's onNavigate gate refuses the switch but the tile stays.
+  canOpenTab?: (tabId: string) => boolean;
 };
 
-const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
+// Indian-unit compact money for tight spots (chart labels, hero sub-stats)
+// where "₹12,34,567.89" would overflow: 1.2k, 3.4L, 1.1Cr. Full precision
+// stays available where there is room, via formatMoney.
+const compactINR = (value: number): string => {
+  const n = Number(value) || 0;
+  const fmt = (v: number, suffix: string) =>
+    `${v.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+  if (n >= 10000000) return fmt(n / 10000000, "Cr");
+  if (n >= 100000) return fmt(n / 100000, "L");
+  if (n >= 1000) return fmt(n / 1000, "k");
+  return formatMoney(n);
+};
+
+// One quick-access tile in the 2-column "Manage" grid: icon + headline
+// number, then the section name it opens full-screen (the dashboard swaps
+// its active panel). `value` is optional so the load-error branch can keep
+// the navigation without printing counts it does not actually have.
+const ManageTile = ({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  hint,
+  onPress,
+}: {
+  icon: any;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value?: string | number;
+  hint?: string;
+  onPress?: () => void;
+}) => (
+  <TouchableOpacity
+    style={styles.manageTile}
+    onPress={onPress}
+    activeOpacity={onPress ? 0.75 : 1}
+    disabled={!onPress}
+    accessibilityRole="button"
+    accessibilityLabel={value !== undefined ? `${label}: ${value}` : label}
+  >
+    <View style={styles.manageTileTop}>
+      <View style={[styles.manageTileIcon, { backgroundColor: iconBg }]}>
+        <Icon size={18} color={iconColor} />
+      </View>
+      {value !== undefined && <Text style={styles.manageTileValue}>{value}</Text>}
+    </View>
+    <Text style={styles.manageTileLabel} numberOfLines={1}>
+      {label}
+    </Text>
+    {!!hint && (
+      <Text style={styles.manageTileHint} numberOfLines={1}>
+        {hint}
+      </Text>
+    )}
+  </TouchableOpacity>
+);
+
+const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
   const [stats, setStats] = useState({
     totalMenuItems: 0,
     activeMenuItems: 0,
@@ -50,6 +115,7 @@ const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
     totalOffers: 0,
     activeOffers: 0,
     activeTables: 0,
+    totalQRCodes: 0,
     completedOrders: 0,
     outOfStockItems: 0,
     totalOrders: 0,
@@ -83,6 +149,9 @@ const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
             totalOffers: response.data.data?.offerStats?.totalOffers ?? 0,
             activeOffers: response.data.data?.offerStats?.activeOffers ?? 0,
             activeTables: response.data.data?.tableStats?.activeTables ?? 0,
+            // Older cached dashboard payloads predate qrStats, so default 0
+            // until the hourly cache rolls over.
+            totalQRCodes: response.data.data?.qrStats?.totalQRCodes ?? 0,
             completedOrders: response.data.data?.historyStats?.completedOrders ?? 0,
             outOfStockItems: menuStats?.outOfStockItems ?? 0,
             totalOrders: revenueStats?.totalOrders ?? 0,
@@ -112,26 +181,109 @@ const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
     fetchStats();
   }, []);
 
+  // No canOpenTab prop (e.g. an older caller) keeps every tile visible -
+  // the dashboard's own gate still refuses a switch it should not allow.
+  const showTab = (tabId: string) => (canOpenTab ? canOpenTab(tabId) : true);
+  const openTab = (tabId: string) =>
+    onNavigate ? () => onNavigate(tabId) : undefined;
+
+  // The "Manage" grid, rendered on both the normal screen and (without
+  // counts) the load-error screen. Defined once so the two can never drift.
+  const renderManageGrid = (withValues: boolean) => (
+    <View style={styles.manageGrid}>
+      {showTab("active_tables") && (
+        <ManageTile
+          icon={LayoutGrid}
+          iconBg="#eff6ff"
+          iconColor="#2563eb"
+          label="Active Tables"
+          value={withValues ? stats.activeTables : undefined}
+          hint="Dining right now"
+          onPress={openTab("active_tables")}
+        />
+      )}
+      {showTab("marketing") && (
+        <ManageTile
+          icon={Sparkles}
+          iconBg="#fef3c7"
+          iconColor="#d97706"
+          label="Happy Hours"
+          value={withValues ? stats.activeOffers : undefined}
+          // Two numbers matter here and they differ: how many offers are
+          // switched on now, out of how many exist at all.
+          hint={withValues ? `${stats.activeOffers} active of ${stats.totalOffers}` : "Offers & discounts"}
+          onPress={openTab("marketing")}
+        />
+      )}
+      {showTab("qr") && (
+        <ManageTile
+          icon={QrCode}
+          iconBg="#eef2ff"
+          iconColor="#4f46e5"
+          label="Table QR Codes"
+          value={withValues ? stats.totalQRCodes : undefined}
+          hint="Saved table codes"
+          onPress={openTab("qr")}
+        />
+      )}
+      {showTab("staff") && (
+        <ManageTile
+          icon={Users}
+          iconBg="#f5f3ff"
+          iconColor="#7c3aed"
+          label="Staff"
+          value={withValues ? stats.totalStaff : undefined}
+          // The role split is what an owner actually reads - "4 staff" says
+          // far less than "2 waiters, 1 chef, 1 manager".
+          hint={
+            withValues && stats.staffByRole.length > 0
+              ? stats.staffByRole
+                  .map((r) => `${r.count} ${r.role.toLowerCase()}`)
+                  .join(" · ")
+              : "Team & permissions"
+          }
+          onPress={openTab("staff")}
+        />
+      )}
+      {showTab("order_history") && (
+        <ManageTile
+          icon={History}
+          iconBg="#f0fdf4"
+          iconColor="#16a34a"
+          label="Order History"
+          value={withValues ? stats.completedOrders : undefined}
+          hint="All past orders"
+          onPress={openTab("order_history")}
+        />
+      )}
+      {showTab("profile") && (
+        <ManageTile
+          icon={User}
+          iconBg="#f9fafb"
+          iconColor="#6b7280"
+          label="Profile Details"
+          hint="Info, documents & login"
+          onPress={openTab("profile")}
+        />
+      )}
+    </View>
+  );
+
   if (loading) {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.header}>
-          <SkeletonBlock width="60%" height={28} borderRadius={6} />
-          <SkeletonBlock width="80%" height={14} borderRadius={6} style={{ marginTop: 8 }} />
+        <SkeletonBlock height={168} borderRadius={20} style={{ marginBottom: 14 }} />
+        <SkeletonBlock height={190} borderRadius={18} style={{ marginBottom: 14 }} />
+        <View style={styles.statPairRow}>
+          <SkeletonBlock height={84} borderRadius={18} style={{ flex: 1 }} />
+          <SkeletonBlock height={84} borderRadius={18} style={{ flex: 1 }} />
         </View>
-
-        <View style={styles.revenueRow}>
-          <SkeletonBlock height={70} borderRadius={14} style={{ flex: 1 }} />
-          <SkeletonBlock height={70} borderRadius={14} style={{ flex: 1 }} />
-          <SkeletonBlock height={70} borderRadius={14} style={{ flex: 1 }} />
-        </View>
-
-        <SkeletonBlock height={180} borderRadius={16} style={{ marginBottom: 16 }} />
-
-        <View style={styles.grid}>
-          <SkeletonBlock height={88} borderRadius={16} />
-          <SkeletonBlock height={88} borderRadius={16} />
-          <SkeletonBlock height={88} borderRadius={16} />
+        <SkeletonBlock height={100} borderRadius={18} style={{ marginBottom: 14 }} />
+        <View style={styles.manageGrid}>
+          <SkeletonBlock height={104} borderRadius={18} style={styles.manageSkeleton} />
+          <SkeletonBlock height={104} borderRadius={18} style={styles.manageSkeleton} />
+          <SkeletonBlock height={104} borderRadius={18} style={styles.manageSkeleton} />
+          <SkeletonBlock height={104} borderRadius={18} style={styles.manageSkeleton} />
         </View>
       </ScrollView>
     );
@@ -145,252 +297,229 @@ const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
     weeklyChartData.length === 0
   ) {
     return (
-      <View style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         <SectionError message="Failed to load dashboard statistics." onRetry={fetchStats} />
 
-        {/* ─── Sections an owner can jump straight into ─────────────────
-            Each tile is the headline number for a screen, and tapping it
-            goes there. The overview was previously read-only, so seeing
-            "3 active tables" meant finding the Tables tab yourself. */}
-
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onNavigate?.("active_tables")}
-          activeOpacity={onNavigate ? 0.7 : 1}
-          disabled={!onNavigate}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: "#eff6ff" }]}>
-            <LayoutGrid size={28} color="#2563eb" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Active Tables</Text>
-            <Text style={styles.cardValue}>{stats.activeTables}</Text>
-          </View>
-          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onNavigate?.("marketing")}
-          activeOpacity={onNavigate ? 0.7 : 1}
-          disabled={!onNavigate}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: "#fef3c7" }]}>
-            <Sparkles size={28} color="#d97706" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Happy Hours</Text>
-            <Text style={styles.cardValue}>{stats.activeOffers}</Text>
-            {/* Two numbers matter here and they differ: how many offers are
-                switched on now, out of how many exist at all. */}
-            <Text style={styles.cardHint}>
-              {stats.activeOffers} active of {stats.totalOffers}
-            </Text>
-          </View>
-          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onNavigate?.("staff")}
-          activeOpacity={onNavigate ? 0.7 : 1}
-          disabled={!onNavigate}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: "#f5f3ff" }]}>
-            <Users size={28} color="#7c3aed" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Staff</Text>
-            <Text style={styles.cardValue}>{stats.totalStaff}</Text>
-            {/* The role split is what an owner actually reads - "4 staff" says
-                far less than "2 waiters, 1 chef, 1 manager". */}
-            {stats.staffByRole.length > 0 && (
-              <Text style={styles.cardHint} numberOfLines={2}>
-                {stats.staffByRole
-                  .map((r) => `${r.count} ${r.role.toLowerCase()}`)
-                  .join(" · ")}
-              </Text>
-            )}
-          </View>
-          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onNavigate?.("order_history")}
-          activeOpacity={onNavigate ? 0.7 : 1}
-          disabled={!onNavigate}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: "#f0fdf4" }]}>
-            <History size={28} color="#16a34a" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Order History</Text>
-            <Text style={styles.cardValue}>{stats.completedOrders}</Text>
-          </View>
-          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
-        </TouchableOpacity>
-
-      </View>
+        {/* Stats failed to load, so the tiles keep working as plain
+            navigation - minus the counts, which would all be lying
+            zeros here. */}
+        <Text style={styles.sectionHeading}>Manage</Text>
+        {renderManageGrid(false)}
+      </ScrollView>
     );
   }
 
   const maxRevenue = Math.max(1, ...weeklyChartData.map((d) => d.revenue));
+  const weekTotal = weeklyChartData.reduce((sum, d) => sum + d.revenue, 0);
+  const todayIdx = weeklyChartData.length - 1;
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.contentContainer}>
 
-      {/* Revenue Breakdown Row */}
-      <View style={styles.revenueRow}>
-        <View style={[styles.revenueCard, { backgroundColor: "#fff7ed" }]}>
-          <CalendarDays size={16} color="#ea580c" />
-          <Text style={styles.revenueLabel}>Today</Text>
-          <Text style={styles.revenueValue}>₹{(stats.todaysRevenue || 0).toLocaleString()}</Text>
+      {/* ─── Revenue hero ─────────────────────────────────────────────
+          Today's figure is the one an owner checks first, several times a
+          day - it gets the spotlight. Month and year ride along as
+          secondary columns instead of three equal-weight boxes. */}
+      <LinearGradient
+        colors={["#fb923c", "#ea580c", "#c2410c"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1.2, y: 1.2 }}
+        style={styles.hero}
+      >
+        <View style={styles.heroBadge}>
+          <CalendarDays size={13} color="#ffedd5" />
+          <Text style={styles.heroBadgeText}>Today's Revenue</Text>
         </View>
-        <View style={[styles.revenueCard, { backgroundColor: "#eff6ff" }]}>
-          <CalendarRange size={16} color="#3b82f6" />
-          <Text style={styles.revenueLabel}>This Month</Text>
-          <Text style={styles.revenueValue}>₹{(stats.thisMonthRevenue || 0).toLocaleString()}</Text>
+        <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+          ₹{formatMoney(stats.todaysRevenue)}
+        </Text>
+        <View style={styles.heroDivider} />
+        <View style={styles.heroSubRow}>
+          <View style={styles.heroSubCol}>
+            <Text style={styles.heroSubLabel}>This Month</Text>
+            <Text style={styles.heroSubValue}>₹{compactINR(stats.thisMonthRevenue)}</Text>
+          </View>
+          <View style={styles.heroSubDivider} />
+          <View style={styles.heroSubCol}>
+            <Text style={styles.heroSubLabel}>This Year</Text>
+            <Text style={styles.heroSubValue}>₹{compactINR(stats.thisYearRevenue)}</Text>
+          </View>
         </View>
-        <View style={[styles.revenueCard, { backgroundColor: "#ecfdf5" }]}>
-          <TrendingUp size={16} color="#059669" />
-          <Text style={styles.revenueLabel}>This Year</Text>
-          <Text style={styles.revenueValue}>₹{(stats.thisYearRevenue || 0).toLocaleString()}</Text>
-        </View>
-      </View>
+      </LinearGradient>
 
-      {/* 7-Day Revenue Chart */}
+      {/* ─── 7-day chart ────────────────────────────────────────────── */}
       {weeklyChartData.length > 0 && (
         <View style={styles.chartCard}>
-          <Text style={styles.sectionTitle}>Last 7 Days</Text>
+          <View style={styles.chartHeader}>
+            <Text style={styles.sectionTitle}>Last 7 Days</Text>
+            <View style={styles.chartTotalPill}>
+              <TrendingUp size={12} color="#ea580c" />
+              <Text style={styles.chartTotalText}>₹{compactINR(weekTotal)}</Text>
+            </View>
+          </View>
           <View style={styles.chartRow}>
-            {weeklyChartData.map((day, idx) => (
-              <View key={idx} style={styles.barColumn}>
-                <Text style={styles.barValue}>
-                  {day.revenue > 0 ? `₹${Math.round(day.revenue)}` : ""}
-                </Text>
-                <View style={styles.barTrack}>
+            {weeklyChartData.map((day, idx) => {
+              const isToday = idx === todayIdx;
+              return (
+                <View key={idx} style={styles.barColumn}>
+                  <Text style={[styles.barValue, isToday && styles.barValueToday]}>
+                    {day.revenue > 0 ? `₹${compactINR(day.revenue)}` : ""}
+                  </Text>
                   <View
                     style={[
                       styles.barFill,
-                      { height: `${Math.max(4, (day.revenue / maxRevenue) * 100)}%` },
+                      isToday && styles.barFillToday,
+                      { height: `${Math.max(5, (day.revenue / maxRevenue) * 100)}%` },
                     ]}
                   />
                 </View>
-                <Text style={styles.barLabel}>{day.name}</Text>
-              </View>
+              );
+            })}
+          </View>
+          {/* Day labels live in their own row below the baseline; the same
+              flex:1 columns keep them centred under their bars. */}
+          <View style={styles.chartLabelsRow}>
+            {weeklyChartData.map((day, idx) => (
+              <Text
+                key={idx}
+                style={[styles.barLabel, idx === todayIdx && styles.barLabelToday]}
+              >
+                {idx === todayIdx ? "Today" : day.name}
+              </Text>
             ))}
           </View>
         </View>
       )}
 
-      {/* Stats Container (Flex Wrap behaves like a Grid) */}
-      <View style={styles.grid}>
-
-        {/* Menu Items Card */}
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onNavigate?.("menu")}
-          activeOpacity={onNavigate ? 0.7 : 1}
-          disabled={!onNavigate}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: "#fff7ed" }]}>
-            <UtensilsCrossed size={28} color="#ea580c" />
+      {/* ─── All-time pair: orders & revenue ────────────────────────── */}
+      <View style={styles.statPairRow}>
+        <View style={styles.statPairCard}>
+          <View style={[styles.statPairIcon, { backgroundColor: "#eff6ff" }]}>
+            <ShoppingBag size={18} color="#3b82f6" />
           </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Total Menu Items</Text>
-            <Text style={styles.cardValue}>{stats.totalMenuItems}</Text>
-          </View>
-          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
-        </TouchableOpacity>
-
-        {/* Active Items Card */}
-        <View style={styles.card}>
-          <View style={[styles.iconContainer, { backgroundColor: "#f0fdf4" }]}>
-            <TrendingUp size={28} color="#16a34a" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Active / Available</Text>
-            <Text style={styles.cardValue}>{stats.activeMenuItems}</Text>
+          <View style={styles.statPairText}>
+            <Text style={styles.statPairValue}>{stats.totalOrders}</Text>
+            <Text style={styles.statPairLabel}>Total Orders</Text>
           </View>
         </View>
-
-        {/* Out of Stock Card */}
-        <View style={styles.card}>
-          <View style={[styles.iconContainer, { backgroundColor: "#fef2f2" }]}>
-            <AlertCircle size={28} color="#ef4444" />
+        <View style={styles.statPairCard}>
+          <View style={[styles.statPairIcon, { backgroundColor: "#ecfdf5" }]}>
+            <IndianRupee size={18} color="#059669" />
           </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Out of Stock</Text>
-            <Text style={styles.cardValue}>{stats.outOfStockItems}</Text>
-          </View>
-        </View>
-
-        {/* Orders Card */}
-        <View style={styles.card}>
-          <View style={[styles.iconContainer, { backgroundColor: "#eff6ff" }]}>
-            <ShoppingBag size={28} color="#3b82f6" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Total Orders</Text>
-            <Text style={styles.cardValue}>{stats.totalOrders}</Text>
-          </View>
-        </View>
-
-        {/* Revenue Card */}
-        <View style={styles.card}>
-          <View style={[styles.iconContainer, { backgroundColor: "#ecfdf5" }]}>
-            <IndianRupee size={28} color="#059669" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.cardLabel}>Total Revenue</Text>
-            <Text style={styles.cardValue}>
-              ₹{stats.totalRevenue.toLocaleString()}
+          <View style={styles.statPairText}>
+            <Text style={styles.statPairValue} numberOfLines={1} adjustsFontSizeToFit>
+              ₹{compactINR(stats.totalRevenue)}
             </Text>
+            <Text style={styles.statPairLabel}>Lifetime Revenue</Text>
           </View>
         </View>
-
       </View>
 
-      {/* Best / Worst Seller Callouts */}
+      {/* ─── Menu snapshot ──────────────────────────────────────────────
+          Three numbers, one card - they describe the same thing, so three
+          separate full-width cards was hierarchy noise. The whole card
+          opens Manage Menu. */}
+      <TouchableOpacity
+        style={styles.menuCard}
+        onPress={() => onNavigate?.("menu")}
+        activeOpacity={onNavigate ? 0.75 : 1}
+        disabled={!onNavigate}
+        accessibilityRole="button"
+      >
+        <View style={styles.menuCardHeader}>
+          <View style={[styles.statPairIcon, { backgroundColor: "#fff7ed" }]}>
+            <UtensilsCrossed size={18} color="#ea580c" />
+          </View>
+          <Text style={styles.menuCardTitle}>Your Menu</Text>
+          {!!onNavigate && <ChevronRight size={18} color="#d1d5db" />}
+        </View>
+        <View style={styles.menuStatsRow}>
+          <View style={styles.menuStatCol}>
+            <Text style={styles.menuStatValue}>{stats.totalMenuItems}</Text>
+            <Text style={styles.menuStatLabel}>Items</Text>
+          </View>
+          <View style={styles.menuStatDivider} />
+          <View style={styles.menuStatCol}>
+            <Text style={[styles.menuStatValue, styles.menuStatValueOk]}>{stats.activeMenuItems}</Text>
+            <Text style={styles.menuStatLabel}>Available</Text>
+          </View>
+          <View style={styles.menuStatDivider} />
+          <View style={styles.menuStatCol}>
+            <Text style={[styles.menuStatValue, stats.outOfStockItems > 0 && styles.menuStatValueBad]}>
+              {stats.outOfStockItems}
+            </Text>
+            <Text style={styles.menuStatLabel}>Out of Stock</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* ─── Manage: sections an owner can jump straight into ──────────
+          Each tile is the headline number for a screen, and tapping it
+          opens that screen full-size. Tiles for sections this account
+          cannot open are hidden, not rendered inert. */}
+      <Text style={styles.sectionHeading}>Manage</Text>
+      {renderManageGrid(true)}
+
+      {/* ─── Insights ───────────────────────────────────────────────── */}
+      {(bestSellingItem || worstSellingItem || topSellingItems.length > 0) && (
+        <Text style={styles.sectionHeading}>Insights</Text>
+      )}
+
       {(bestSellingItem || worstSellingItem) && (
         <View style={styles.calloutRow}>
           {bestSellingItem && (
-            <View style={[styles.calloutCard, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
-              <TrendingUp size={18} color="#16a34a" />
-              <Text style={styles.calloutLabel}>Best Seller</Text>
+            <View style={[styles.calloutCard, styles.calloutCardGood]}>
+              <View style={styles.calloutTopRow}>
+                <TrendingUp size={16} color="#16a34a" />
+                <Text style={[styles.calloutLabel, styles.calloutLabelGood]}>Best Seller</Text>
+              </View>
               <Text style={styles.calloutItemName} numberOfLines={1}>{bestSellingItem._id}</Text>
-              <Text style={styles.calloutSub}>{bestSellingItem.totalQuantity} sold · ₹{Math.round(bestSellingItem.revenue).toLocaleString()}</Text>
+              <Text style={styles.calloutSub}>{bestSellingItem.totalQuantity} sold · ₹{compactINR(bestSellingItem.revenue)}</Text>
             </View>
           )}
           {worstSellingItem && worstSellingItem._id !== bestSellingItem?._id && (
-            <View style={[styles.calloutCard, { backgroundColor: "#fef2f2", borderColor: "#fecaca" }]}>
-              <TrendingDown size={18} color="#ef4444" />
-              <Text style={styles.calloutLabel}>Needs a Push</Text>
+            <View style={[styles.calloutCard, styles.calloutCardBad]}>
+              <View style={styles.calloutTopRow}>
+                <TrendingDown size={16} color="#ef4444" />
+                <Text style={[styles.calloutLabel, styles.calloutLabelBad]}>Needs a Push</Text>
+              </View>
               <Text style={styles.calloutItemName} numberOfLines={1}>{worstSellingItem._id}</Text>
-              <Text style={styles.calloutSub}>{worstSellingItem.totalQuantity} sold · ₹{Math.round(worstSellingItem.revenue).toLocaleString()}</Text>
+              <Text style={styles.calloutSub}>{worstSellingItem.totalQuantity} sold · ₹{compactINR(worstSellingItem.revenue)}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Top 5 Selling Items */}
       {topSellingItems.length > 0 && (
         <View style={styles.topItemsCard}>
           <View style={styles.topItemsHeader}>
-            <Trophy size={18} color="#ea580c" />
+            <Trophy size={16} color="#ea580c" />
             <Text style={styles.sectionTitle}>Top Selling Items</Text>
           </View>
-          {topSellingItems.map((item, idx) => (
-            <View key={item._id} style={styles.topItemRow}>
-              <View style={styles.topItemRank}>
-                <Text style={styles.topItemRankText}>{idx + 1}</Text>
+          {topSellingItems.map((item, idx) => {
+            const share = topSellingItems[0].totalQuantity > 0
+              ? item.totalQuantity / topSellingItems[0].totalQuantity
+              : 0;
+            return (
+              <View key={item._id} style={styles.topItemRow}>
+                <View style={[styles.topItemRank, idx === 0 && styles.topItemRankFirst]}>
+                  <Text style={[styles.topItemRankText, idx === 0 && styles.topItemRankTextFirst]}>{idx + 1}</Text>
+                </View>
+                <View style={styles.topItemBody}>
+                  <View style={styles.topItemNameRow}>
+                    <Text style={styles.topItemName} numberOfLines={1}>{item._id}</Text>
+                    <Text style={styles.topItemQty}>{item.totalQuantity}×</Text>
+                    <Text style={styles.topItemRevenue}>₹{compactINR(item.revenue)}</Text>
+                  </View>
+                  {/* A quantity bar makes the ranking legible at a glance -
+                      "how far ahead is #1" is the question this list answers. */}
+                  <View style={styles.topItemBarTrack}>
+                    <View style={[styles.topItemBarFill, { width: `${Math.max(4, share * 100)}%` }]} />
+                  </View>
+                </View>
               </View>
-              <Text style={styles.topItemName} numberOfLines={1}>{item._id}</Text>
-              <Text style={styles.topItemQty}>{item.totalQuantity}×</Text>
-              <Text style={styles.topItemRevenue}>₹{Math.round(item.revenue).toLocaleString()}</Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
 
@@ -400,242 +529,469 @@ const OverviewManager = ({ onNavigate }: OverviewManagerProps) => {
 };
 
 const styles = StyleSheet.create({
-  loaderContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-  },
   container: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#f8fafc",
   },
   contentContainer: {
     padding: 16,
     paddingBottom: 40,
   },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "900", // extabold/black approximation
-    color: "#111827", // gray-900
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#6b7280", // gray-500
+
+  // Section headings between card groups
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 10,
     marginTop: 4,
-    fontWeight: "500",
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1e293b",
   },
 
-  // Revenue breakdown row
-  revenueRow: {
+  // Revenue hero
+  hero: {
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 14,
+    shadowColor: "#ea580c",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  heroBadge: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 16,
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+    marginBottom: 10,
   },
-  revenueCard: {
+  heroBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#ffedd5",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  heroValue: {
+    fontSize: 38,
+    fontWeight: "900",
+    color: "#ffffff",
+    letterSpacing: -1,
+  },
+  heroDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    marginVertical: 14,
+  },
+  heroSubRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  heroSubCol: {
     flex: 1,
-    borderRadius: 14,
-    padding: 12,
-    gap: 4,
+    gap: 2,
   },
-  revenueLabel: {
+  heroSubDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    marginHorizontal: 14,
+  },
+  heroSubLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#6b7280",
+    color: "#fed7aa",
     textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  revenueValue: {
-    fontSize: 16,
+  heroSubValue: {
+    fontSize: 17,
     fontWeight: "900",
-    color: "#1f2937",
+    color: "#ffffff",
   },
 
   // Chart
   chartCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: "#f1f5f9",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 15,
+  chartHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  chartTotalPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#fff7ed",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+  },
+  chartTotalText: {
+    fontSize: 12,
     fontWeight: "800",
-    color: "#1f2937",
-    marginBottom: 12,
+    color: "#ea580c",
   },
   chartRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    height: 140,
+    height: 150,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 0,
   },
   barColumn: {
     flex: 1,
     alignItems: "center",
     justifyContent: "flex-end",
     height: "100%",
+    gap: 5,
   },
   barValue: {
     fontSize: 9,
     fontWeight: "700",
-    color: "#9ca3af",
-    marginBottom: 4,
+    color: "#94a3b8",
   },
-  barTrack: {
-    width: 18,
-    height: 90,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 6,
-    justifyContent: "flex-end",
-    overflow: "hidden",
+  barValueToday: {
+    color: "#ea580c",
+    fontWeight: "900",
   },
   barFill: {
-    width: "100%",
-    backgroundColor: "#ea580c",
-    borderRadius: 6,
+    width: 22,
+    backgroundColor: "#ffedd5",
+    borderTopLeftRadius: 7,
+    borderTopRightRadius: 7,
   },
-  barLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#6b7280",
+  barFillToday: {
+    backgroundColor: "#ea580c",
+  },
+  chartLabelsRow: {
+    flexDirection: "row",
     marginTop: 6,
   },
-
-  grid: {
-    flexDirection: "column",
-    gap: 16, // spacing between cards
-    marginBottom: 16,
+  barLabel: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#94a3b8",
   },
-  card: {
-    backgroundColor: "#ffffff",
-    padding: 24,
-    borderRadius: 16,
+  barLabelToday: {
+    color: "#ea580c",
+    fontWeight: "900",
+  },
+
+  // All-time orders / revenue pair
+  statPairRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 14,
+  },
+  statPairCard: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#f3f4f6", // border-gray-100
-    // Shadows
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    borderColor: "#f1f5f9",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     elevation: 2,
   },
-  iconContainer: {
-    width: 56, // w-14
-    height: 56, // h-14
-    borderRadius: 16, // rounded-2xl
+  statPairIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 20, // gap-5 equivalent
   },
-  textContainer: {
+  statPairText: {
     flex: 1,
   },
-  cardLabel: {
-    fontSize: 12, // text-sm
-    fontWeight: "bold",
-    color: "#6b7280", // text-gray-500
-    textTransform: "uppercase",
-    letterSpacing: 0.5, // tracking-wider
-    marginBottom: 4, // mb-1
+  statPairValue: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#0f172a",
   },
-  // The secondary line under a headline number - the role split on Staff,
-  // the active-of-total on Happy Hours.
-  cardHint: { fontSize: 11, color: '#9ca3af', fontWeight: '600', marginTop: 3 },
-  cardValue: {
-    fontSize: 28, // text-3xl
-    fontWeight: "900", // font-black
-    color: "#1f2937", // text-gray-800
+  statPairLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94a3b8",
+    marginTop: 1,
+  },
+
+  // Menu snapshot
+  menuCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  menuCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 14,
+  },
+  menuCardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1e293b",
+  },
+  menuStatsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  menuStatCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  menuStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#f1f5f9",
+  },
+  menuStatValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  menuStatValueOk: {
+    color: "#16a34a",
+  },
+  menuStatValueBad: {
+    color: "#ef4444",
+  },
+  menuStatLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94a3b8",
+  },
+
+  // Manage grid
+  manageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 18,
+  },
+  manageSkeleton: {
+    flexBasis: "47%",
+    flexGrow: 1,
+  },
+  manageTile: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  manageTileTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  manageTileIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  manageTileValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  manageTileLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#1e293b",
+  },
+  manageTileHint: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#94a3b8",
+    marginTop: 2,
   },
 
   // Best/worst callouts
   calloutRow: {
     flexDirection: "row",
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   calloutCard: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 12,
-    gap: 2,
+    gap: 4,
+  },
+  calloutCardGood: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
+  },
+  calloutCardBad: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fecaca",
+  },
+  calloutTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   calloutLabel: {
     fontSize: 10,
     fontWeight: "800",
-    color: "#6b7280",
     textTransform: "uppercase",
-    marginTop: 6,
+    letterSpacing: 0.5,
+  },
+  calloutLabelGood: {
+    color: "#16a34a",
+  },
+  calloutLabelBad: {
+    color: "#ef4444",
   },
   calloutItemName: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#1f2937",
+    color: "#1e293b",
   },
   calloutSub: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#6b7280",
+    color: "#64748b",
   },
 
   // Top selling items
   topItemsCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
+    marginBottom: 18,
     borderWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: "#f1f5f9",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   topItemsHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   topItemRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#f9fafb",
-    gap: 10,
+    gap: 12,
   },
   topItemRank: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#fff7ed",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#f1f5f9",
     alignItems: "center",
     justifyContent: "center",
+  },
+  topItemRankFirst: {
+    backgroundColor: "#ea580c",
   },
   topItemRankText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#ea580c",
+    color: "#64748b",
+  },
+  topItemRankTextFirst: {
+    color: "#ffffff",
+  },
+  topItemBody: {
+    flex: 1,
+    gap: 6,
+  },
+  topItemNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   topItemName: {
     flex: 1,
     fontSize: 13,
     fontWeight: "700",
-    color: "#1f2937",
+    color: "#1e293b",
   },
   topItemQty: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6b7280",
+    color: "#94a3b8",
   },
   topItemRevenue: {
     fontSize: 13,
     fontWeight: "800",
     color: "#059669",
+    minWidth: 56,
+    textAlign: "right",
+  },
+  topItemBarTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#f1f5f9",
+    overflow: "hidden",
+  },
+  topItemBarFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: "#fb923c",
   },
 });
 

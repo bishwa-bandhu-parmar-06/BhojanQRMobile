@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { Picker } from '@react-native-picker/picker';
+import { formatMoney } from "../../utils/money";
 
 // Define the shape of an individual order item
 export interface OrderItem {
@@ -89,7 +90,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
           </TouchableOpacity>
 
           <Text style={[styles.info, { marginTop: 16 }]}>
-            Total Price: ₹{order.totalPrice}
+            Total Price: ₹{formatMoney(order.totalPrice)}
           </Text>
 
           <Text style={styles.itemsTitle}>Ordered Items:</Text>
@@ -97,7 +98,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
             {(Array.isArray(order.items) ? order.items : [order.items]).map(
               (item: any, idx: number) => (
                 <Text key={idx} style={styles.itemRow}>
-                  • {item.name} × {item.quantity} — ₹{item.price}
+                  • {item.name} × {item.quantity} — ₹{formatMoney(item.price)}
                 </Text>
               ),
             )}

@@ -21,18 +21,11 @@ const TABS = [
   { id: "custom", label: "Custom Range" },
 ];
 
-// responseType stays "arraybuffer" for error responses too, so the server's
-// JSON body ({ success: false, message }) arrives as raw bytes instead of an
-// object - a 400 from the query validator or a 429 from reportLimiter would
-// otherwise surface as a blank "Please try again". This is the RN counterpart
-// of the website's `await error.response.data.text()` + JSON.parse.
 const extractApiErrorMessage = (data: any): string | null => {
   if (!data || typeof data.byteLength !== "number" || data.byteLength === 0) return null;
   try {
     const bytes = new Uint8Array(data);
     let text = "";
-    // Chunked: String.fromCharCode(...) is capped by the engine's argument
-    // limit, which a long error body can exceed.
     for (let i = 0; i < bytes.length; i += 8192) {
       text += String.fromCharCode(...bytes.subarray(i, i + 8192));
     }
@@ -90,20 +83,8 @@ const SalesReportPanel = () => {
 
       const fileName = `BhojanQR_Sales_Report_${activeTab}_${todayISO()}.xlsx`;
 
-      // Caches, not DocumentDirectory. react-native-share resolves the file://
-      // URI through its own FileProvider, and share_download_paths.xml declares
-      // only <cache-path> and external Download/ - a file in the app's internal
-      // files/ dir matches no configured root, so getUriForFile() throws,
-      // compatUriFromFile() returns null, and ClipData.newUri() then fails with
-      // "Attempt to invoke virtual method 'java.lang.String
-      // android.net.Uri.toString()' on a null object reference". This is the
-      // same cache route QRManager already uses for its ZIP export.
       destPath = `${RNFS.CachesDirectoryPath}/${fileName}`;
 
-      // ArrayBuffer -> base64 via the shared helper. btoa() is a Hermes
-      // extension rather than a React Native API (it does not exist on JSC and
-      // there is no Buffer global either), and building the binary string a
-      // character at a time first meant one concatenation per byte of workbook.
       await RNFS.writeFile(destPath, arrayBufferToBase64(response.data), 'base64');
 
       // Check file size
@@ -133,9 +114,7 @@ const SalesReportPanel = () => {
         failOnCancel: false,
       });
 
-      // Handed off - leave the file in place. The share target may still be
-      // reading the URI after open() resolves, and the cache directory is the
-      // OS to reclaim.
+     
       destPath = null;
 
     } catch (error: any) {

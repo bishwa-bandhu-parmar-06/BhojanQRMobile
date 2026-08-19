@@ -20,6 +20,7 @@ import { Store, Tag,WifiOff } from "lucide-react-native";
 import { getAllMenuItems } from "../API/menuApi";
 import BhojanQRLoader from "../components/BhojanQRLoader";
 import MenuImage from "../components/MenuImage"; 
+import { formatMoney } from "../utils/money";
 
 const { width } = Dimensions.get("window");
 // Calculate card width for a 2-column grid with padding
@@ -64,7 +65,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item }) => {
 
         {/* Floating Price Badge */}
         <View style={styles.priceBadge}>
-          <Text style={styles.priceText}>₹{item.price}</Text>
+          <Text style={styles.priceText}>₹{formatMoney(item.price)}</Text>
         </View>
 
         {/* Out of Stock Overlay */}

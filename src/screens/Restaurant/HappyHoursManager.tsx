@@ -33,6 +33,7 @@ import { getFullMenu } from "../../API/menuApi";
 import CustomModal from "../../components/CustomModal";
 import { SkeletonBlock } from "../../components/Skeleton";
 import type { HeaderAction } from "../../components/Header";
+import { formatMoney } from "../../utils/money";
 
 const DAYS = [
   { value: "mon", label: "Mon" },
@@ -197,6 +198,12 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
       Toast.show({ type: "error", text1: "Percentage discount must be less than 100%" });
       return;
     }
+    // Whole percents only - matches the server rule. A fractional rate like
+    // 12.5% prices items into stray paise and float-tail totals.
+    if (form.discountType === "percentage" && !Number.isInteger(value)) {
+      Toast.show({ type: "error", text1: "Percentage discount must be a whole number (e.g. 15)" });
+      return;
+    }
     if (form.applyTo.scope === "items" && form.applyTo.menuItems.length === 0) {
       Toast.show({ type: "error", text1: "Select at least one menu item" });
       return;
@@ -269,24 +276,11 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
     }
   };
 
-  // An offer discounts menu items, so with an empty menu there is nothing for
-  // one to apply to - the form's "apply to items/category" pickers would be
-  // empty and any offer created would silently affect nothing. Blocking
-  // creation up front is clearer than letting someone build an offer that
-  // cannot work.
   const hasMenu = menuItems.length > 0;
-
-  // Handlers in a ref so the publishing effect below reacts only to hasMenu.
-  // Depending on the handlers directly would re-run it every render,
-  // publishing a fresh array each time and bouncing renders between this
-  // panel and the dashboard indefinitely.
   const handlersRef = useRef({ refresh: () => {}, create: () => {} });
   handlersRef.current = { refresh: handleRefresh, create: openCreateModal };
 
-  // Refresh is always offered - it is how someone escapes the no-menu gate.
-  // "New offer" is not: with an empty menu there is nothing to discount, so
-  // the button would open a form that cannot produce a working offer. It
-  // appears the moment a menu exists.
+
   useEffect(() => {
     const actions: HeaderAction[] = [
       {
@@ -621,7 +615,7 @@ const HappyHoursManager = ({ onHeaderActions, onRequestMenuAction }: HappyHoursM
                           {checked && <View style={styles.checkboxDot} />}
                         </View>
                         <Text style={styles.itemRowName} numberOfLines={1}>{item.name}</Text>
-                        <Text style={styles.itemRowPrice}>₹{item.price}</Text>
+                        <Text style={styles.itemRowPrice}>₹{formatMoney(item.price)}</Text>
                       </TouchableOpacity>
                     );
                   })
