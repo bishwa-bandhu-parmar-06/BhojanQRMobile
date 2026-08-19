@@ -160,3 +160,35 @@ project.ext.vectoricons = [
     iconFontNames: ["FontAwesome5_Brands.ttf", "FontAwesome5_Regular.ttf", "FontAwesome5_Solid.ttf"]
 ]
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+
+// ─────────────────────────────────────────────────────────────────────────
+// Workaround for a native task-ordering race with react-native-reanimated.
+//
+// This app's CMake configure tasks (configureCMakeRelWithDebInfo[...] /
+// configureCMakeDebug[...]) invoke the prefab CLI with reanimated's package
+// directory (node_modules/react-native-reanimated/android/build/
+// intermediates/prefab_package/<variant>/prefab) passed as a raw path, but
+// carry no task dependency on the reanimated task that produces it. Running
+// `gradlew clean assembleRelease` in ONE invocation deletes that directory
+// and then configures this app before reanimated has re-packaged it, and
+// prefab hard-fails with CXX1429 "<dir> is not readable".
+//
+// `tasks.matching` returns a LIVE collection, so this stays correct however
+// late the tasks are registered, and quietly does nothing if the module or
+// task ever disappears.
+afterEvaluate {
+    def reanimated = rootProject.findProject(":react-native-reanimated")
+    if (reanimated != null) {
+        tasks.configureEach { t ->
+            def n = t.name
+            if (n.startsWith("configureCMakeDebug") || n.startsWith("buildCMakeDebug")) {
+                t.dependsOn(reanimated.tasks.matching { it.name == "prefabDebugPackage" })
+            } else if (n.startsWith("configureCMakeRelWithDebInfo")
+                    || n.startsWith("configureCMakeRelease")
+                    || n.startsWith("buildCMakeRelWithDebInfo")
+                    || n.startsWith("buildCMakeRelease")) {
+                t.dependsOn(reanimated.tasks.matching { it.name == "prefabReleasePackage" })
+            }
+        }
+    }
+}
