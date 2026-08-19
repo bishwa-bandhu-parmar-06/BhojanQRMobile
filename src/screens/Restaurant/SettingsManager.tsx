@@ -36,6 +36,8 @@ import {
   Pencil,
 } from "lucide-react-native";
 import { launchImageLibrary } from "react-native-image-picker";
+import RNFS from "react-native-fs";
+import RNShare from "react-native-share";
 import { pick, types } from "@react-native-documents/picker";
 import { useDispatch, useSelector } from "react-redux";
 import { updateUser } from "../../Features/AuthSlice";
@@ -582,15 +584,50 @@ const SettingsManager = ({
       onConfirm: () => deleteDoc(doc._id),
     });
 
+  // PDFs can't be handed to the intent chooser as a remote https URL - the
+  // apps it offers (Drive, PDF viewers) expect a local content:// file, not
+  // a link to fetch, so "open with Google Drive" always failed. Download the
+  // file into the app cache first, then offer it through react-native-share's
+  // FileProvider with a proper application/pdf type - the same
+  // download-into-cache-then-hand-off route the sales report already uses.
+  const openingDocRef = React.useRef(false);
+  const openPdfDocument = async (url: string) => {
+    if (openingDocRef.current) return;
+    openingDocRef.current = true;
+    Toast.show({ type: "info", text1: "Opening document..." });
+    const destPath = `${RNFS.CachesDirectoryPath}/bhojanqr_document_preview.pdf`;
+    try {
+      const { promise } = RNFS.downloadFile({ fromUrl: url, toFile: destPath });
+      const result = await promise;
+      if (result.statusCode !== 200) {
+        throw new Error(`Download failed (${result.statusCode})`);
+      }
+      await RNShare.open({
+        url: `file://${destPath}`,
+        type: "application/pdf",
+        // ACTION_VIEW chooser (PDF viewers), not the share sheet.
+        showAppsToView: true,
+        failOnCancel: false,
+      });
+    } catch {
+      // Fall back to the browser, which renders Cloudinary PDFs natively -
+      // covers both a failed download and a phone with no PDF viewer at all.
+      await RNFS.unlink(destPath).catch(() => {});
+      Linking.openURL(url).catch(() =>
+        Toast.show({ type: "error", text1: "Unable to open document" }),
+      );
+    } finally {
+      openingDocRef.current = false;
+    }
+  };
+
   const handlePreviewDoc = (doc: any) => {
     if (!doc.documentUrl) return;
     const ext = doc.documentUrl.split(".").pop()?.toLowerCase().split("?")[0];
     if (ext && IMAGE_EXTENSIONS.includes(ext)) {
       setPreviewDocUrl(doc.documentUrl);
     } else {
-      Linking.openURL(doc.documentUrl).catch(() =>
-        Toast.show({ type: "error", text1: "Unable to open document" }),
-      );
+      openPdfDocument(doc.documentUrl);
     }
   };
 
