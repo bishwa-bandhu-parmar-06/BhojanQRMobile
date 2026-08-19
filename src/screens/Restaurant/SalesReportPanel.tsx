@@ -4,12 +4,15 @@ import Toast from "react-native-toast-message";
 import RNShare from "react-native-share";
 import RNFS from "react-native-fs";
 import { FileSpreadsheet, Download } from "lucide-react-native";
+import { downloadSalesReport } from '../../API/reportApi';
 
 import { getToken } from "../../utils/tokenStorage";
-import { API_BASE_URL } from "../../config/env";
+import { arrayBufferToBase64 } from "../../utils/base64";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const thisMonthISO = () => new Date().toISOString().slice(0, 7);
+
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 const TABS = [
   { id: "daily", label: "Daily" },
@@ -17,6 +20,28 @@ const TABS = [
   { id: "yearly", label: "Yearly" },
   { id: "custom", label: "Custom Range" },
 ];
+
+// responseType stays "arraybuffer" for error responses too, so the server's
+// JSON body ({ success: false, message }) arrives as raw bytes instead of an
+// object - a 400 from the query validator or a 429 from reportLimiter would
+// otherwise surface as a blank "Please try again". This is the RN counterpart
+// of the website's `await error.response.data.text()` + JSON.parse.
+const extractApiErrorMessage = (data: any): string | null => {
+  if (!data || typeof data.byteLength !== "number" || data.byteLength === 0) return null;
+  try {
+    const bytes = new Uint8Array(data);
+    let text = "";
+    // Chunked: String.fromCharCode(...) is capped by the engine's argument
+    // limit, which a long error body can exceed.
+    for (let i = 0; i < bytes.length; i += 8192) {
+      text += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    }
+    const parsed = JSON.parse(text);
+    return parsed.message || parsed.error || null;
+  } catch {
+    return null;
+  }
+};
 
 const SalesReportPanel = () => {
   const [activeTab, setActiveTab] = useState("daily");
@@ -36,15 +61,10 @@ const SalesReportPanel = () => {
 
   const handleDownload = async () => {
     setIsDownloading(true);
+    // Tracked so a file that was written but never handed off is cleaned up
+    // instead of being left behind as a valid-looking but corrupt workbook.
+    let destPath: string | null = null;
     try {
-      // Streamed straight to disk by RNFS rather than pulled through axios.
-      //
-      // The old path asked axios for `responseType: "arraybuffer"` and then
-      // base64-encoded it. That works in a browser; React Native's XHR does
-      // not give axios a real ArrayBuffer, so what came back was a mangled
-      // string and every download failed. RNFS.downloadFile writes the bytes
-      // as they arrive, which also means a large report never has to sit in
-      // memory on a phone.
       const token = getToken();
       if (!token) {
         Toast.show({
@@ -55,40 +75,38 @@ const SalesReportPanel = () => {
         return;
       }
 
-      const query = new URLSearchParams(buildParams() as any).toString();
-      const fileName = `BhojanQR_Sales_Report_${activeTab}_${todayISO()}.xlsx`;
-      // Written to the app's own directory, not the public Downloads folder.
-      // Android 10+ scoped storage blocks a direct write there without
-      // permissions the app does not request; the share sheet below is how
-      // the file reaches Drive, WhatsApp or the user's own storage.
-      const destPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+      const params = buildParams();
+      const response = await downloadSalesReport(params);
 
-      const { promise } = RNFS.downloadFile({
-        fromUrl: `${API_BASE_URL}/reports/sales?${query}`,
-        toFile: destPath,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const result = await promise;
-
-      // RNFS resolves even on a 4xx/5xx - it reports the status rather than
-      // throwing, so the body would be written to disk as an .xlsx full of
-      // JSON error text unless this is checked.
-      if (result.statusCode !== 200) {
-        const detail =
-          result.statusCode === 403
-            ? "You do not have permission to export reports"
-            : result.statusCode === 404
-              ? "No orders found for this period"
-              : `Server returned ${result.statusCode}`;
-        Toast.show({ type: "error", text1: "Could not download the report", text2: detail });
-        await RNFS.unlink(destPath).catch(() => {});
+      // Check if response has data
+      if (!response.data || response.data.byteLength === 0) {
+        Toast.show({
+          type: "error",
+          text1: "The report was empty",
+          text2: "There are no orders in this period",
+        });
         return;
       }
 
-      // An empty file means the request succeeded but produced nothing; a
-      // 0-byte .xlsx opens as a corrupt workbook, which is a worse outcome
-      // than being told there was no data.
+      const fileName = `BhojanQR_Sales_Report_${activeTab}_${todayISO()}.xlsx`;
+
+      // Caches, not DocumentDirectory. react-native-share resolves the file://
+      // URI through its own FileProvider, and share_download_paths.xml declares
+      // only <cache-path> and external Download/ - a file in the app's internal
+      // files/ dir matches no configured root, so getUriForFile() throws,
+      // compatUriFromFile() returns null, and ClipData.newUri() then fails with
+      // "Attempt to invoke virtual method 'java.lang.String
+      // android.net.Uri.toString()' on a null object reference". This is the
+      // same cache route QRManager already uses for its ZIP export.
+      destPath = `${RNFS.CachesDirectoryPath}/${fileName}`;
+
+      // ArrayBuffer -> base64 via the shared helper. btoa() is a Hermes
+      // extension rather than a React Native API (it does not exist on JSC and
+      // there is no Buffer global either), and building the binary string a
+      // character at a time first meant one concatenation per byte of workbook.
+      await RNFS.writeFile(destPath, arrayBufferToBase64(response.data), 'base64');
+
+      // Check file size
       const stat = await RNFS.stat(destPath);
       if (Number(stat.size) === 0) {
         Toast.show({
@@ -97,6 +115,7 @@ const SalesReportPanel = () => {
           text2: "There are no orders in this period",
         });
         await RNFS.unlink(destPath).catch(() => {});
+        destPath = null;
         return;
       }
 
@@ -108,24 +127,42 @@ const SalesReportPanel = () => {
 
       await RNShare.open({
         url: `file://${destPath}`,
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type: XLSX_MIME,
         filename: fileName,
         title: "Sales Report",
         failOnCancel: false,
       });
+
+      // Handed off - leave the file in place. The share target may still be
+      // reading the URI after open() resolves, and the cache directory is the
+      // OS to reclaim.
+      destPath = null;
+
     } catch (error: any) {
-      // The old handler was a bare `catch {}`, so every failure looked
-      // identical and told you nothing about which one it was.
+      console.error('Download error:', error);
+
+      if (destPath) {
+        await RNFS.unlink(destPath).catch(() => {});
+      }
+
+      const serverMessage = extractApiErrorMessage(error?.response?.data);
+      const timedOut = error?.code === "ECONNABORTED" || error?.code === "ETIMEDOUT";
       const message =
-        error?.message?.includes("Network")
-          ? "Could not reach the server"
-          : error?.message || "Please try again";
-      Toast.show({ type: "error", text1: "Failed to download the report", text2: message });
+        serverMessage ||
+        (timedOut ? "The report took too long to build - try a shorter period" : null) ||
+        (!error?.response ? "Could not reach the server" : null) ||
+        error?.message ||
+        "Please try again";
+
+      Toast.show({
+        type: "error",
+        text1: "Failed to download the report",
+        text2: message,
+      });
     } finally {
       setIsDownloading(false);
     }
   };
-
 
   return (
     <View style={styles.card}>
