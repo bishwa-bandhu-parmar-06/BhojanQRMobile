@@ -58,6 +58,7 @@ import {
   deleteRestaurantDocument,
 } from "../../API/restaurentApi";
 import SectionError from "../../components/SectionError";
+import { emailFieldProps } from "../../utils/emailInput";
 
 const ID_TYPES = ["FSSAI", "GSTIN", "PAN", "Aadhar"];
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
@@ -762,8 +763,7 @@ const SettingsManager = ({
             label="New email address"
             icon={Mail}
             placeholder="you@restaurant.com"
-            autoCapitalize="none"
-            keyboardType="email-address"
+            {...emailFieldProps}
             importantForAutofill="no"
             autoComplete="off"
             value={emailForm.newEmail}

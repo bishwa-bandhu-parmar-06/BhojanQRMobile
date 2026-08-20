@@ -28,6 +28,7 @@ import { loginSuccess } from '../../Features/AuthSlice';
 
 import { loginAdmin } from '../../API/adminApi';
 import { setToken } from '../../utils/tokenStorage';
+import { emailFieldProps } from '../../utils/emailInput';
 
 // Sign-in only. There is no admin sign-up here, and there was never a
 // working one: POST /admin/register sits behind requireSuperAdminSecret (see
@@ -159,8 +160,7 @@ const AdminAuth = () => {
                     style={styles.input}
                     placeholder="Email Address"
                     placeholderTextColor="#9ca3af"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
+                    {...emailFieldProps}
                     value={adminData.email}
                     onChangeText={(val) => handleChange('email', val)}
                   />

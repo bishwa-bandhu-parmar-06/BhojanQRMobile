@@ -23,6 +23,7 @@ import { useDispatch } from "react-redux";
 import { loginSuccess } from "../Features/AuthSlice";
 import { registerRestaurant, loginRestaurant } from "../API/restaurentApi";
 import { setToken } from "../utils/tokenStorage";
+import { emailFieldProps } from "../utils/emailInput";
 
 // Kept in step with server/config/cloudinary.js. The server rejects anything
 // outside these anyway; duplicating them here is what turns a failed
@@ -475,8 +476,7 @@ const RestaurentAuth = () => {
                     style={styles.textInput}
                     placeholder="Email Address *"
                     placeholderTextColor="#9ca3af"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
+                    {...emailFieldProps}
                     value={restaurantData.email}
                     onChangeText={(val) => handleChange("email", val)}
                   />

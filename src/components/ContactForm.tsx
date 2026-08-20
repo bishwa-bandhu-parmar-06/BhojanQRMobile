@@ -16,6 +16,7 @@ import {
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import Toast from "react-native-toast-message";
 import { submitContactForm } from "../API/contactApi";
+import { emailFieldProps } from "../utils/emailInput";
 
 interface ContactFormProps {
   onClose: () => void;
@@ -140,8 +141,7 @@ const ContactForm: React.FC<ContactFormProps> = ({ onClose }) => {
                       style={styles.textInput}
                       placeholder="john@example.com"
                       placeholderTextColor="#9ca3af"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
+                      {...emailFieldProps}
                       value={formData.email}
                       onChangeText={(text) => handleInputChange("email", text)}
                       onFocus={() => setFocusedInput('email')}

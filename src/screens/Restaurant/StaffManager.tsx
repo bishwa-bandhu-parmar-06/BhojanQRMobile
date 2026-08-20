@@ -38,6 +38,7 @@ import {
 import CustomModal from "../../components/CustomModal";
 import type { HeaderAction } from "../../components/Header";
 import { SkeletonBlock } from "../../components/Skeleton";
+import { emailFieldProps } from "../../utils/emailInput";
 
 interface StaffMember {
   _id: string;
@@ -578,8 +579,7 @@ const StaffManager = ({ onHeaderActions }: StaffManagerProps) => {
             <TextInput cursorColor="#ea580c" selectionColor="#fdba74"
               style={[styles.input, !!editingStaff && styles.inputDisabled]}
               placeholder="staff@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
+              {...emailFieldProps}
               editable={!editingStaff}
               value={form.email}
               onChangeText={(v) => setForm((p) => ({ ...p, email: v }))}

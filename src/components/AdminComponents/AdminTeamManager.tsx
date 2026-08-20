@@ -34,6 +34,7 @@ import {
 import CustomModal from "../CustomModal";
 import { SkeletonBlock } from "../Skeleton";
 import SectionError from "../SectionError";
+import { emailFieldProps } from "../../utils/emailInput";
 
 const AdminTeamManager = () => {
   const [admins, setAdmins] = useState<any[]>([]);
@@ -400,8 +401,7 @@ const AdminTeamManager = () => {
               style={styles.input}
               placeholder="admin@bhojanqr.com"
               placeholderTextColor="#94a3b8"
-              keyboardType="email-address"
-              autoCapitalize="none"
+              {...emailFieldProps}
               value={form.email}
               onChangeText={(v) => setForm((p) => ({ ...p, email: v }))}
             />

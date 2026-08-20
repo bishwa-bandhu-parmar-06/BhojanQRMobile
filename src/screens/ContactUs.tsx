@@ -19,6 +19,7 @@ import Toast from 'react-native-toast-message';
 
 import { submitContactForm } from '../API/contactApi';
 import { FOUNDER, CONTACT_LINKS, BUSINESS_HOURS } from '../config/socialLinks';
+import { emailFieldProps } from '../utils/emailInput';
 
 const FAQ_QUICK_LINKS = [
   'How do I register my restaurant?',
@@ -97,8 +98,7 @@ const ContactUs = () => {
                   onChangeText={v => handleChange('email', v)}
                   placeholder="you@example.com"
                   placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
+                  {...emailFieldProps}
                 />
 
                 <Text style={styles.fieldLabel}>Phone</Text>

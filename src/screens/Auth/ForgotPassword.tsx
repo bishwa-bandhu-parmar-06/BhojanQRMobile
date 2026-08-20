@@ -17,6 +17,7 @@ import Toast from 'react-native-toast-message';
 import { forgotPasswordRestaurant } from '../../API/restaurentApi';
 import { forgotPasswordAdmin } from '../../API/adminApi';
 import { navigateToScreen } from '../../utils/navigation';
+import { emailFieldProps } from '../../utils/emailInput';
 
 // Customer is deliberately absent: the app no longer has a customer login to
 // send anyone back to, so a customer reset has to be done on the website.
@@ -111,8 +112,7 @@ const ForgotPassword = () => {
                       style={styles.input}
                       placeholder="Email Address"
                       placeholderTextColor="#9ca3af"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
+                      {...emailFieldProps}
                       value={email}
                       onChangeText={setEmail}
                     />

@@ -19,6 +19,7 @@ import { loginSuccess } from '../../Features/AuthSlice';
 import { loginStaff } from '../../API/staffApi';
 import { setToken } from '../../utils/tokenStorage';
 import { navigateToScreen } from '../../utils/navigation';
+import { emailFieldProps } from '../../utils/emailInput';
 
 // Standalone login screen for staff accounts (managers/waiters/chefs)
 // created by the restaurant owner from the Staff Management tab.
@@ -87,8 +88,7 @@ const StaffAuth = () => {
                     style={styles.textInput}
                     placeholder="you@example.com"
                     placeholderTextColor="#9ca3af"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
+                    {...emailFieldProps}
                     value={email}
                     onChangeText={setEmail}
                   />
