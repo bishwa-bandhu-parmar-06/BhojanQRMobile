@@ -31,6 +31,8 @@ import {
   isArchivedGroup,
   groupBySession,
   TERMINAL_ORDER_STATUSES,
+  canTransitionTo,
+  hasOpenUndoWindow,
 } from "../../constants/orderStatus";
 import { useArchiveTick } from "../../hooks/useArchiveTick";
 import CustomModal from "../../components/CustomModal";
@@ -167,7 +169,15 @@ const OrderManager = () => {
     () => orders.some((o) => TERMINAL_ORDER_STATUSES.includes(o.status)),
     [orders],
   );
-  const now = useArchiveTick(hasPendingArchive);
+  // The same clock also drives the undo buttons, which have to stop being
+  // offered the moment their 30s window closes. Without this the board would
+  // keep showing a live "step back" long after the server would refuse it -
+  // the exact mismatch these gates exist to remove.
+  const hasUndoable = useMemo(
+    () => orders.some((o) => hasOpenUndoWindow(o)),
+    [orders],
+  );
+  const now = useArchiveTick(hasPendingArchive || hasUndoable);
 
   // Archiving is decided per SESSION, not per order. A table with three
   // orders keeps all three on the board until the last one is finished, so a
@@ -341,10 +351,15 @@ const OrderManager = () => {
             {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }, idx) => {
               const isCurrent = order.status === value;
               const isDone = currentIdx > -1 && idx < currentIdx;
+              // Only what the server would actually accept. A stage the
+              // server refuses is drawn faded and does not respond, instead
+              // of applying optimistically and snapping back.
+              const allowed = canTransitionTo(order, value, now);
               return (
                 <TouchableOpacity
                   key={value}
                   onPress={() => handleStatusChange(order._id, value)}
+                  disabled={!allowed}
                   style={[
                     styles.iconBtn,
                     isCurrent
@@ -352,18 +367,18 @@ const OrderManager = () => {
                       : isDone
                         ? { backgroundColor: `${color}14`, borderColor: "transparent" }
                         : styles.iconBtnInactive,
+                    !isCurrent && !allowed && styles.iconBtnBlocked,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={label}
+                  accessibilityState={{ disabled: !allowed }}
                 >
                   <Icon size={16} color={isCurrent ? "#ffffff" : isDone ? color : "#9ca3af"} />
                 </TouchableOpacity>
               );
             })}
 
-            {canCancel &&
-              order.status !== "Cancelled" &&
-              order.status !== "Completed" && (
+            {canCancel && canTransitionTo(order, "Cancelled", now) && (
                 <TouchableOpacity
                   onPress={() => requestCancel(order._id)}
                   style={[styles.iconBtn, styles.iconBtnCancel]}
@@ -460,18 +475,25 @@ const OrderManager = () => {
         >
           {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }) => {
             const isCurrent = order.status === value;
+            const allowed = canTransitionTo(order, value, now);
             return (
               <TouchableOpacity
                 key={value}
                 onPress={() => handleStatusChange(order._id, value)}
-                style={[styles.actionBtn, isCurrent ? { backgroundColor: `${color}1A`, borderColor: color } : styles.btnInactive]}
+                disabled={!allowed}
+                style={[
+                  styles.actionBtn,
+                  isCurrent ? { backgroundColor: `${color}1A`, borderColor: color } : styles.btnInactive,
+                  !isCurrent && !allowed && styles.iconBtnBlocked,
+                ]}
+                accessibilityState={{ disabled: !allowed }}
               >
                 <Icon size={14} color={isCurrent ? color : "#6b7280"} />
                 <Text style={[styles.btnText, { color: isCurrent ? color : "#6b7280" }]}>{label}</Text>
               </TouchableOpacity>
             );
           })}
-          {canCancel && order.status !== "Cancelled" && order.status !== "Completed" && (
+          {canCancel && canTransitionTo(order, "Cancelled", now) && (
             <TouchableOpacity
               onPress={() => requestCancel(order._id)}
               style={[styles.actionBtn, styles.btnCancel]}
@@ -1036,6 +1058,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   iconBtnInactive: { backgroundColor: "#f9fafb", borderColor: "#e5e7eb" },
+  // A stage the server would refuse. Faded rather than hidden: the row still
+  // reads as a six-stage journey, it is just clear which stages are reachable
+  // from here.
+  iconBtnBlocked: { opacity: 0.35 },
   iconBtnCancel: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#f9fafb", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   tableBadge: { backgroundColor: "#ffedd5", alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginBottom: 6 },

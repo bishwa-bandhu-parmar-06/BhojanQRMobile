@@ -2,9 +2,10 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, Switch, Image, StyleSheet, ActivityIndicator } from "react-native";
 import Toast from "react-native-toast-message";
 import { Utensils, ImagePlus, Save } from "lucide-react-native";
-import { Picker } from "@react-native-picker/picker";
 import { launchImageLibrary } from "react-native-image-picker";
-import { addMenuItem, updateMenuItem } from "../../API/menuApi";
+import { addMenuItem, updateMenuItem, getMenuCategories } from "../../API/menuApi";
+import { DIETARY_TAGS, ALLERGENS, SPICE_LEVELS, DEFAULT_MENU_CATEGORIES } from "../../constants/foodTags";
+import CategorySelect from "./CategorySelect";
 
 interface MenuFormProps {
   menuItem?: any;
@@ -17,30 +18,70 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
   
   const [imagePreview, setImagePreview] = useState<string | null | undefined>(null);
 
-  const [formData, setFormData] = useState<any>({ 
-    name: "", 
-    price: "", 
-    category: "Main Course", 
-    description: "", 
-    image: null, 
-    available: true 
+  // Seeded with the defaults so the field is usable on the very first frame,
+  // then replaced by the live list (defaults + this restaurant's own custom
+  // categories) once it arrives.
+  const [categories, setCategories] = useState<string[]>(DEFAULT_MENU_CATEGORIES);
+
+  const [formData, setFormData] = useState<any>({
+    name: "",
+    price: "",
+    category: "Main Course",
+    description: "",
+    image: null,
+    available: true,
+    dietaryTags: [] as string[],
+    allergens: [] as string[],
+    spiceLevel: null as string | null,
   });
 
   useEffect(() => {
     if (menuItem) {
-      setFormData({ 
-        name: menuItem.name || "", 
-        price: menuItem.price?.toString() || "", 
-        category: menuItem.category || "Main Course", 
-        description: menuItem.description || "", 
-        image: null, 
-        available: menuItem.available ?? true 
+      setFormData({
+        name: menuItem.name || "",
+        price: menuItem.price?.toString() || "",
+        category: menuItem.category || "Main Course",
+        description: menuItem.description || "",
+        image: null,
+        available: menuItem.available ?? true,
+        dietaryTags: menuItem.dietaryTags || [],
+        allergens: menuItem.allergens || [],
+        spiceLevel: menuItem.spiceLevel || null,
       });
       if (menuItem.imageUrl) {
         setImagePreview(menuItem.imageUrl);
       }
     }
   }, [menuItem]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await getMenuCategories();
+        if (res?.data?.data?.length) setCategories(res.data.data);
+      } catch {
+        // Defaults are already in state - a failed lookup costs the custom
+        // categories, not the field itself, so there is nothing to report.
+      }
+    };
+    loadCategories();
+  }, []);
+
+  // A category typed into the dropdown is only persisted once an item is
+  // saved under it, so it goes into the local list immediately - otherwise it
+  // would vanish from the options the moment the sheet closed.
+  const handleAddCategory = (newCategory: string) => {
+    setCategories((prev) => [...prev, newCategory]);
+  };
+
+  const toggleInArray = (field: "dietaryTags" | "allergens", value: string) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      [field]: prev[field].includes(value)
+        ? prev[field].filter((v: string) => v !== value)
+        : [...prev[field], value],
+    }));
+  };
 
   const handleImagePick = async () => {
     const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8 });
@@ -64,6 +105,13 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
       dataToSend.append("description", formData.description);
       // FormData requires strings
       dataToSend.append("available", formData.available ? "true" : "false");
+      // Multipart cannot carry raw arrays, so these go as JSON strings - the
+      // same shape the web dashboard sends and the shape parseTagArray()
+      // expects on the server. spiceLevel is sent as "" when unset because
+      // parseSpiceLevel() maps anything outside SPICE_LEVELS back to null.
+      dataToSend.append("dietaryTags", JSON.stringify(formData.dietaryTags));
+      dataToSend.append("allergens", JSON.stringify(formData.allergens));
+      dataToSend.append("spiceLevel", formData.spiceLevel || "");
 
       if (formData.image) {
         // Cast to 'any' to bypass React Native FormData strict typing limitations
@@ -98,24 +146,82 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onCancel, onSuccess }) =>
         <Text style={styles.label}>Item Name *</Text>
         <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="e.g. Paneer Butter Masala" value={formData.name} onChangeText={(t) => setFormData({ ...formData, name: t })} />
 
-        <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.label}>Price *</Text>
-            <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="0.00" keyboardType="numeric" value={formData.price} onChangeText={(t) => setFormData({ ...formData, price: t })} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={styles.label}>Category *</Text>
-            <View style={styles.pickerWrap}>
-              <Picker selectedValue={formData.category} onValueChange={(t) => setFormData({ ...formData, category: t })} style={{ height: 48 }}>
-                <Picker.Item label="Main Course" value="Main Course" /><Picker.Item label="Starter" value="Starter" />
-                <Picker.Item label="Dessert" value="Dessert" /><Picker.Item label="Beverage" value="Beverage" />
-              </Picker>
-            </View>
-          </View>
+        <Text style={styles.label}>Price *</Text>
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={styles.input} placeholder="0.00" keyboardType="numeric" value={formData.price} onChangeText={(t) => setFormData({ ...formData, price: t })} />
+
+        {/* Price and Category used to share one two-up row, which left the
+            category field about 156dp wide on a 360dp phone - not enough for
+            "Main Course", let alone a custom category name. Full width. */}
+        <Text style={styles.label}>Category *</Text>
+        <View style={styles.fieldSpacer}>
+          <CategorySelect
+            value={formData.category}
+            onChange={(value) => setFormData({ ...formData, category: value })}
+            categories={categories}
+            onAddCategory={handleAddCategory}
+          />
         </View>
 
         <Text style={styles.label}>Description</Text>
-        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, { height: 80 }]} multiline placeholder="Briefly describe..." value={formData.description} onChangeText={(t) => setFormData({ ...formData, description: t })} />
+        <TextInput cursorColor="#ea580c" selectionColor="#fdba74" style={[styles.input, styles.textArea]} multiline placeholder="Briefly describe..." value={formData.description} onChangeText={(t) => setFormData({ ...formData, description: t })} />
+
+        {/* Three chip groups, matching the web dashboard field for field and
+            colour for colour: green for dietary, amber for allergens, orange
+            for spice. Customers filter and get warned on exactly these, so a
+            dish saved from a phone has to carry the same labels as one saved
+            from a browser. */}
+        <Text style={styles.label}>Dietary Tags</Text>
+        <View style={styles.chipRow}>
+          {DIETARY_TAGS.map((tag) => {
+            const on = formData.dietaryTags.includes(tag);
+            return (
+              <TouchableOpacity
+                key={tag}
+                onPress={() => toggleInArray("dietaryTags", tag)}
+                style={[styles.chip, on && styles.chipDietaryOn]}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{tag}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.label}>Contains Allergens</Text>
+        <View style={styles.chipRow}>
+          {ALLERGENS.map((allergen) => {
+            const on = formData.allergens.includes(allergen);
+            return (
+              <TouchableOpacity
+                key={allergen}
+                onPress={() => toggleInArray("allergens", allergen)}
+                style={[styles.chip, on && styles.chipAllergenOn]}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{allergen}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Single-select, and tapping the active one clears it - spice level
+            is genuinely optional, so there has to be a way back to "none". */}
+        <Text style={styles.label}>Spice Level</Text>
+        <View style={styles.chipRow}>
+          {SPICE_LEVELS.map((level) => {
+            const on = formData.spiceLevel === level;
+            return (
+              <TouchableOpacity
+                key={level}
+                onPress={() => setFormData((prev: any) => ({ ...prev, spiceLevel: prev.spiceLevel === level ? null : level }))}
+                style={[styles.chip, on && styles.chipSpiceOn]}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{level}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <Text style={styles.label}>Item Image {!menuItem && "*"}</Text>
         <TouchableOpacity style={styles.imageArea} onPress={handleImagePick}>
@@ -153,8 +259,15 @@ const styles = StyleSheet.create({
   body: { padding: 16, backgroundColor: "#f9fafb" },
   label: { fontSize: 14, fontWeight: "bold", color: "#374151", marginBottom: 6 },
   input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16 },
-  row: { flexDirection: "row", justifyContent: "space-between" },
-  pickerWrap: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, marginBottom: 16, justifyContent: "center" },
+  textArea: { height: 80, textAlignVertical: "top" },
+  fieldSpacer: { marginBottom: 16 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb" },
+  chipText: { fontSize: 13, fontWeight: "700", color: "#4b5563" },
+  chipTextOn: { color: "#fff" },
+  chipDietaryOn: { backgroundColor: "#22c55e", borderColor: "#22c55e" },
+  chipAllergenOn: { backgroundColor: "#f59e0b", borderColor: "#f59e0b" },
+  chipSpiceOn: { backgroundColor: "#f97316", borderColor: "#f97316" },
   imageArea: { height: 160, borderWidth: 2, borderColor: "#d1d5db", borderStyle: "dashed", borderRadius: 16, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", overflow: "hidden", marginBottom: 16 },
   preview: { width: "100%", height: "100%" },
   imgText: { marginTop: 8, fontWeight: "bold", color: "#6b7280" },

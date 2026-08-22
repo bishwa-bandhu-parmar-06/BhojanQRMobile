@@ -20,6 +20,8 @@ interface MenuListProps {
   onEdit: (item: MenuItem) => void;
   onDelete: (id: string) => void;
   onToggleAvailable: (id: string, newStatus: boolean) => void;
+  // Passed straight through to each card: tapping one opens its detail view.
+  onPress?: (item: MenuItem) => void;
   // Drawn in the empty state only. Once a single dish exists these disappear
   // and the header's two icons are the only way in - a first-run prompt, not
   // a permanent toolbar competing with them.
@@ -44,6 +46,7 @@ const MenuList: React.FC<MenuListProps> = ({
   onEdit,
   onDelete,
   onToggleAvailable,
+  onPress,
   onAddItem,
   onBulkAdd,
   onEndReached,
@@ -112,6 +115,7 @@ const MenuList: React.FC<MenuListProps> = ({
           item={item}
           onEdit={onEdit}
           onDelete={onDelete}
+          onPress={onPress}
           onToggleAvailable={onToggleAvailable}
           canEdit={canEdit}
           canDelete={canDelete}

@@ -249,6 +249,22 @@ const RestaurantDashboard = () => {
   // Stable identity - the panels call these from effects keyed on them, so a
   // new function each render would re-fire those effects continuously.
   const handleSubScreenChange = useCallback((open: boolean) => setIsSubScreenOpen(open), []);
+  // Set while a bulk menu import is reading a file or uploading rows. Logging
+  // out mid-upload drops the auth token between two of the per-item requests,
+  // so the menu ends up half written with no way to tell which half.
+  const [isMenuBusy, setIsMenuBusy] = useState(false);
+  const handleMenuBusyChange = useCallback((busy: boolean) => setIsMenuBusy(busy), []);
+  const handleLogoutPress = useCallback(() => {
+    if (isMenuBusy) {
+      Toast.show({
+        type: "error",
+        text1: "Upload in progress",
+        text2: "Finish or cancel the menu upload before logging out.",
+      });
+      return;
+    }
+    setLogoutModalVisible(true);
+  }, [isMenuBusy]);
   const handleMenuActionConsumed = useCallback(() => setMenuAction(null), []);
   const handleAutoOpenConsumed = useCallback(() => setAutoOpenAddDoc(false), []);
 
@@ -540,6 +556,12 @@ const RestaurantDashboard = () => {
       {!openSectionLabel && !isSubScreenOpen && (
         <Header
           title={t(TAB_TITLES[activeTab])}
+          // getDefaultTab, not a hardcoded "overview": home is whatever tab
+          // this account actually lands on, and a staff member without
+          // view_overview would otherwise be sent to a tab they cannot open.
+          // goToTab records the trail, so back undoes the logo tap, and it
+          // no-ops when you are already home rather than stacking history.
+          onLogoPress={() => goToTab(getDefaultTab({ isOwner, can }))}
           // No bell on More: that page is a static list of destinations, and
           // one of the things it lists is where notifications already live.
           // On Menu the + takes the bell's place instead.
@@ -651,6 +673,7 @@ const RestaurantDashboard = () => {
             pendingAction={menuAction}
             onActionConsumed={handleMenuActionConsumed}
             onSubScreenChange={handleSubScreenChange}
+            onBusyChange={handleMenuBusyChange}
           />
         </View>
       ) : activeTab === "orders" && canAccessTab("orders", { isOwner, can }) ? (
@@ -736,7 +759,7 @@ const RestaurantDashboard = () => {
                   rather than sitting in the run of ordinary sections. */}
               <TouchableOpacity
                 style={[styles.moreRow, styles.moreRowLogout]}
-                onPress={() => setLogoutModalVisible(true)}
+                onPress={handleLogoutPress}
                 activeOpacity={0.7}
               >
                 <View style={[styles.moreIconBox, styles.moreIconBoxLogout]}>

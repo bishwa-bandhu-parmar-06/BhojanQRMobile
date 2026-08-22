@@ -33,6 +33,24 @@ export const getFullMenu = (fresh = false) => {
   });
 };
 
+// The category dropdown's options: the server's default starter set plus any
+// custom category this restaurant has already used on a live menu item. A
+// custom category only becomes an option once something is saved under it,
+// which is why the forms also add newly typed names to their local list
+// straight away rather than waiting for a round trip.
+export const getMenuCategories = () => {
+  return api.get(`${BASE_URL}/owner/categories`);
+};
+
+// Asks the server what image a row would end up with, without saving it:
+// the spreadsheet's own URL if it actually resolves to an image, otherwise a
+// stock photo matched on the dish name, otherwise nothing. Runs the identical
+// chain addMenuItem runs at save time, so the preview cannot promise one
+// thing and the upload deliver another.
+export const resolveMenuImage = (name, imageUrl) => {
+  return api.post(`${BASE_URL}/owner/resolve-image`, { name, imageUrl });
+};
+
 export const addMenuItem = formDataToSend => {
   return api.post(`${BASE_URL}/add`, formDataToSend, {
     headers: { 'Content-Type': 'multipart/form-data' },

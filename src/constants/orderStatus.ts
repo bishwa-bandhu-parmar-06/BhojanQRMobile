@@ -58,6 +58,70 @@ export const isActiveOrderStatus = (status: string): boolean =>
   !['Completed', 'Cancelled'].includes(status);
 
 /**
+ * How long a status change can be taken back. Must match UNDO_WINDOW_MS in
+ * the server's orderController.
+ */
+export const UNDO_WINDOW_MS = 30 * 1000;
+
+const flowIndexOf = (status: string): number =>
+  ORDER_STATUS_FLOW.findIndex(s => s.value === status);
+
+/**
+ * Whether this order can move to `target` right now.
+ *
+ * A mirror of the guards in the server's updateOrderStatus, so the board can
+ * grey out what the server would refuse instead of letting it be tapped. That
+ * is the whole point: the board applies status changes optimistically, so an
+ * offer the server rejects shows the new status, then snaps back a round trip
+ * later. Deciding it here means the illegal tap never happens.
+ *
+ * The rules, matching the server exactly:
+ *  - Forward is unrestricted. Skipping straight to Delivered is a normal
+ *    thing to do on a busy floor and the server allows it.
+ *  - Backward is an undo: ONE step, and only inside the undo window. This is
+ *    the bug being fixed - Delivered offered a jump all the way back to
+ *    Received, which the server has always refused with "you can only undo
+ *    the most recent status change, one step at a time".
+ *  - Cancel is available until the order is Delivered or Completed, after
+ *    which the server refuses it outright.
+ *  - Un-cancelling is a revert too, so it is bounded by the same window.
+ */
+export const canTransitionTo = (
+  order: any,
+  target: string,
+  now: number = Date.now(),
+): boolean => {
+  const from = order?.status;
+  if (!from || from === target) return false;
+
+  const changedAt = new Date(order.statusUpdatedAt || order.updatedAt || 0).getTime();
+  // No usable timestamp means the undo window cannot be proven open, so
+  // reverts are refused rather than offered and then rejected.
+  const withinUndoWindow =
+    Number.isFinite(changedAt) && changedAt > 0 && now - changedAt <= UNDO_WINDOW_MS;
+
+  if (target === 'Cancelled') {
+    return !['Delivered', 'Completed', 'Cancelled'].includes(from);
+  }
+
+  if (from === 'Cancelled') return withinUndoWindow;
+
+  const fromIdx = flowIndexOf(from);
+  const toIdx = flowIndexOf(target);
+  if (fromIdx === -1 || toIdx === -1) return false;
+
+  if (toIdx > fromIdx) return true;
+  return fromIdx - toIdx === 1 && withinUndoWindow;
+};
+
+/** True while any status change on this order could still be taken back. */
+export const hasOpenUndoWindow = (order: any, now: number = Date.now()): boolean => {
+  const changedAt = new Date(order?.statusUpdatedAt || order?.updatedAt || 0).getTime();
+  if (!Number.isFinite(changedAt) || changedAt === 0) return false;
+  return now - changedAt <= UNDO_WINDOW_MS;
+};
+
+/**
  * How long a Completed order stays on the live boards before moving to Order
  * History. Must match HISTORY_GRACE_MS in the server's orderController - the
  * boards hide with this rule and the /order/history endpoint reveals with it,
@@ -65,10 +129,11 @@ export const isActiveOrderStatus = (status: string): boolean =>
  * for a while.
  *
  * The delay exists because "Completed" is the status most often tapped by
- * mistake: a minute is long enough to notice and step it back, short enough
- * that a finished order is not still in the way when the next one lands.
+ * mistake. It matches UNDO_WINDOW_MS on the server exactly: the grace is there
+ * so a mis-tap can be stepped back, and once an order can no longer be undone
+ * there is no reason for it to keep occupying the board.
  */
-export const HISTORY_GRACE_MS = 60 * 1000;
+export const HISTORY_GRACE_MS = 30 * 1000;
 
 /**
  * The two terminal states. An order in either is finished with - nothing on

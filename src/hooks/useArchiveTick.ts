@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 
-// How often the live boards re-check whether a Completed order has served out
-// its grace period. The order therefore leaves the board somewhere between 60
-// and 70 seconds after completion, which is what "after a minute" means in
-// practice - polling to the exact second would cost a re-render every second
-// for no visible difference.
-const TICK_MS = 10 * 1000;
+// How often the live boards re-check whether a terminal order has served out
+// its grace period, so it lands somewhere in 30-35s rather than exactly at 30.
+//
+// Sized against HISTORY_GRACE_MS: at the previous 10s a 30s grace could
+// overshoot by a third, which is visible when the promise is "half a minute".
+// Polling to the exact second would cost a re-render every second for no
+// difference anyone could see, and this interval only runs while something is
+// actually waiting to be archived - see `enabled` below.
+const TICK_MS = 5 * 1000;
 
 /**
  * A clock for time-based filtering.
  *
  * Filtering on `Date.now()` inside render is not enough on its own: nothing
- * re-renders when a minute passes, so a completed order would sit on the
- * board until the next socket event or manual refresh happened to arrive.
+ * re-renders when the grace period elapses, so a finished order would sit on
+ * the board until the next socket event or manual refresh happened to arrive.
  * This supplies a value that changes on a timer, so the board updates itself.
  *
  * @param enabled Pass false when nothing on screen is waiting to be archived.

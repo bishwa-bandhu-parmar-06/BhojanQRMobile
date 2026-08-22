@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { Animated, Pressable } from 'react-native';
 
-import { Pencil, Trash2, Tag } from 'lucide-react-native';
+import { Pencil, Trash2, Tag, Leaf, AlertTriangle, Flame } from 'lucide-react-native';
 import MenuImage from '../MenuImage';
 import { formatMoney } from "../../utils/money";
 
@@ -19,7 +19,12 @@ export interface MenuItem {
   description?: string;
   imageUrl?: string;
   available: boolean;
-  [key: string]: any; 
+  // Optional because older items predate these fields and the server simply
+  // omits empty ones - every read site has to cope with them being absent.
+  dietaryTags?: string[];
+  allergens?: string[];
+  spiceLevel?: string | null;
+  [key: string]: any;
 }
 
 interface MenuItemCardProps {
@@ -27,6 +32,9 @@ interface MenuItemCardProps {
   onEdit: (item: MenuItem) => void;
   onDelete: (id: string) => void;
   onToggleAvailable: (id: string, newStatus: boolean) => void;
+  // Tapping the card body opens the full-screen detail view. Optional so the
+  // card stays usable anywhere that has nowhere to drill into.
+  onPress?: (item: MenuItem) => void;
   // Hidden rather than disabled: a greyed-out delete on every row is noise on
   // a screen a waiter uses all shift. These are the server's rules mirrored
   // for the UI - the routes enforce them regardless of what is drawn here.
@@ -78,11 +86,22 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
   onEdit,
   onDelete,
   onToggleAvailable,
+  onPress,
   canEdit = true,
   canDelete = true,
 }) => {
   return (
-    <View style={[styles.card, !item.available && styles.cardUnavailable]}>
+    // The whole card is the target, footer controls included: React Native
+    // hands a touch to the deepest view that claims it, so the toggle and the
+    // edit/delete buttons still get their own taps rather than opening the
+    // detail screen underneath them.
+    <Pressable
+      style={[styles.card, !item.available && styles.cardUnavailable]}
+      onPress={() => onPress?.(item)}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `${item.name}, view details` : undefined}
+    >
       <View style={styles.imageWrap}>
         <MenuImage uri={item.imageUrl} style={styles.image} />
         {!item.available && (
@@ -105,6 +124,34 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
         <Text style={styles.description} numberOfLines={1}>
           {item.description || 'No description provided.'}
         </Text>
+
+        {/* Same badges the web dashboard's card shows, in the same colours -
+            green dietary, amber allergen, red spice - so an owner checking
+            the menu on a phone sees what a customer sees, and can tell at a
+            glance which dishes still have no tags on them. Rendered only when
+            there is something to show, to keep untagged cards compact. */}
+        {(!!item.dietaryTags?.length || !!item.allergens?.length || !!item.spiceLevel) && (
+          <View style={styles.badgeRow}>
+            {item.dietaryTags?.map(tag => (
+              <View key={tag} style={[styles.badge, styles.badgeDietary]}>
+                <Leaf size={9} color="#15803d" />
+                <Text style={[styles.badgeText, styles.badgeTextDietary]}>{tag}</Text>
+              </View>
+            ))}
+            {item.allergens?.map(allergen => (
+              <View key={allergen} style={[styles.badge, styles.badgeAllergen]}>
+                <AlertTriangle size={9} color="#b45309" />
+                <Text style={[styles.badgeText, styles.badgeTextAllergen]}>{allergen}</Text>
+              </View>
+            ))}
+            {!!item.spiceLevel && (
+              <View style={[styles.badge, styles.badgeSpice]}>
+                <Flame size={9} color="#dc2626" />
+                <Text style={[styles.badgeText, styles.badgeTextSpice]}>{item.spiceLevel}</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.footer}>
           <View style={styles.toggleRow}>
@@ -134,7 +181,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           </View>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 };
 
@@ -215,6 +262,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9ca3af',
   },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 6,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  badgeText: { fontSize: 9, fontWeight: '800' },
+  badgeDietary: { backgroundColor: '#f0fdf4', borderColor: '#dcfce7' },
+  badgeTextDietary: { color: '#15803d' },
+  badgeAllergen: { backgroundColor: '#fffbeb', borderColor: '#fef3c7' },
+  badgeTextAllergen: { color: '#b45309' },
+  badgeSpice: { backgroundColor: '#fef2f2', borderColor: '#fee2e2' },
+  badgeTextSpice: { color: '#dc2626' },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

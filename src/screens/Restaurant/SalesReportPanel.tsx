@@ -8,6 +8,7 @@ import { downloadSalesReport } from '../../API/reportApi';
 
 import { getToken } from "../../utils/tokenStorage";
 import { arrayBufferToBase64 } from "../../utils/base64";
+import { extractApiErrorMessage } from "../../utils/apiError";
 import CalendarSheet, { formatCalendarValue, type CalendarMode } from "../../components/CalendarSheet";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -21,21 +22,6 @@ const TABS = [
   { id: "yearly", label: "Yearly" },
   { id: "custom", label: "Custom Range" },
 ];
-
-const extractApiErrorMessage = (data: any): string | null => {
-  if (!data || typeof data.byteLength !== "number" || data.byteLength === 0) return null;
-  try {
-    const bytes = new Uint8Array(data);
-    let text = "";
-    for (let i = 0; i < bytes.length; i += 8192) {
-      text += String.fromCharCode(...bytes.subarray(i, i + 8192));
-    }
-    const parsed = JSON.parse(text);
-    return parsed.message || parsed.error || null;
-  } catch {
-    return null;
-  }
-};
 
 const SalesReportPanel = () => {
   const [activeTab, setActiveTab] = useState("daily");

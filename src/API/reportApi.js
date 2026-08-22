@@ -18,6 +18,22 @@ export const downloadSalesReport = params => {
   });
 };
 
+// Every item ever sold, best seller first - the overview card shows the top
+// five, this is the same list unabridged for the drill-in behind it.
+export const getTopSellingItems = period => {
+  return api.get(`${BASE_URL}/top-selling`, { params: { period } });
+};
+
+// Same list as a .xlsx. arraybuffer for the same reason downloadSalesReport
+// uses it, and the longer timeout because a large menu means a large sheet.
+export const exportTopSellingItems = period => {
+  return api.get(`${BASE_URL}/top-selling/export`, {
+    params: { period },
+    responseType: 'arraybuffer',
+    timeout: 60000,
+  });
+};
+
 export const getRecapInsight = () => {
   return api.get(`${BASE_URL}/insights/recap`);
 };

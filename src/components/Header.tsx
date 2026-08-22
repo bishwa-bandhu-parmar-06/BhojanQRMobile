@@ -33,9 +33,14 @@ interface HeaderProps {
   // onBellPress, so a page can have actions with the bell (most tabs), actions
   // instead of it (Menu, where + takes its place), or neither (More).
   actions?: HeaderAction[];
+  // Makes the logo a "go home" button. Omitted where there is no home to go
+  // to - PendingApproval takes this header from the navigator and has exactly
+  // one screen - and the logo then stays a plain, unpressable image rather
+  // than a button that appears to do nothing.
+  onLogoPress?: () => void;
 }
 
-const Header = ({ title, onBellPress, actions }: HeaderProps) => {
+const Header = ({ title, onBellPress, actions, onLogoPress }: HeaderProps) => {
   const dispatch = useDispatch();
   const c = useThemeColors();
   const styles = useThemedStyles(makeStyles);
@@ -96,6 +101,14 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
     };
   }, [showBell, dispatch, orderAlerts, alertSound]);
 
+  const logo = (
+    <Image
+      source={require('../../assets/bhojanqr-icon.png')}
+      style={styles.logoImage}
+      resizeMode="contain"
+    />
+  );
+
   return (
     <View style={styles.headerContainer}>
       {/* Absolutely positioned and centred across the FULL bar, rather than
@@ -107,11 +120,20 @@ const Header = ({ title, onBellPress, actions }: HeaderProps) => {
         {title}
       </Text>
 
-      <Image
-        source={require('../../assets/bhojanqr-icon.png')}
-        style={styles.logoImage}
-        resizeMode="contain"
-      />
+      {onLogoPress ? (
+        <TouchableOpacity
+          onPress={onLogoPress}
+          // The mark is small and sits hard against the screen edge, so it
+          // needs a target well beyond its own bounds to be tappable.
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Go to home"
+        >
+          {logo}
+        </TouchableOpacity>
+      ) : (
+        logo
+      )}
 
       <View style={styles.spacer} />
 

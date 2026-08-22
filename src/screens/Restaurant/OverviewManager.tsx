@@ -11,6 +11,7 @@ import {
   TrendingDown,
   CalendarDays,
   Trophy,
+  Maximize2,
   LayoutGrid,
   Sparkles,
   Users,
@@ -25,6 +26,7 @@ import { formatMoney } from "../../utils/money";
 import SalesReportPanel from "./SalesReportPanel";
 import { SkeletonBlock } from "../../components/Skeleton";
 import SectionError from "../../components/SectionError";
+import TopSellingItemsScreen from "../../components/Restaurant/TopSellingItemsScreen";
 
 interface DayRevenue {
   name: string;
@@ -131,6 +133,8 @@ const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
   const [worstSellingItem, setWorstSellingItem] = useState<SoldItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // The full-screen "every item ever sold" drill-in behind the top-five card.
+  const [showAllSold, setShowAllSold] = useState(false);
   // Chart width = screen minus the screen padding (16*2) and card padding
   // (16*2); chart-kit needs an absolute pixel width up front.
   const { width: windowWidth } = useWindowDimensions();
@@ -501,6 +505,18 @@ const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
           <View style={styles.topItemsHeader}>
             <Trophy size={16} color="#ea580c" />
             <Text style={styles.sectionTitle}>Top Selling Items</Text>
+            {/* The card is a top five by design - it has to stay scannable
+                next to everything else on this screen. This is the way to the
+                rest of the list, and to the export. */}
+            <TouchableOpacity
+              style={styles.expandBtn}
+              onPress={() => setShowAllSold(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="See all sold items"
+            >
+              <Maximize2 size={15} color="#ea580c" />
+            </TouchableOpacity>
           </View>
           {topSellingItems.map((item, idx) => {
             const share = topSellingItems[0].totalQuantity > 0
@@ -530,6 +546,8 @@ const OverviewManager = ({ onNavigate, canOpenTab }: OverviewManagerProps) => {
       )}
 
       <SalesReportPanel />
+
+      <TopSellingItemsScreen visible={showAllSold} onClose={() => setShowAllSold(false)} />
     </ScrollView>
   );
 };
@@ -892,6 +910,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginBottom: 8,
+  },
+  // Pushes the expand button to the far right of the header row.
+  expandBtn: {
+    marginLeft: "auto",
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    padding: 7,
+    borderRadius: 9,
   },
   topItemRow: {
     flexDirection: "row",

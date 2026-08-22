@@ -233,11 +233,21 @@ const AdminDashboard = () => {
             <ArrowLeft size={22} color="#0f172a" />
           </TouchableOpacity>
         ) : (
-          <Image
-            source={require('../../../assets/bhojanqr-icon.png')}
-            style={styles.headerLogo}
-            resizeMode="contain"
-          />
+          // Same "tap the mark to go home" the restaurant dashboard's header
+          // has. Only offered at the top level - inside a section this slot is
+          // the back arrow above, and that is the way out from there.
+          <TouchableOpacity
+            onPress={() => setActiveTab('overview')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go to home"
+          >
+            <Image
+              source={require('../../../assets/bhojanqr-icon.png')}
+              style={styles.headerLogo}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
         )}
 
         <Text style={styles.headerTitle} numberOfLines={1}>
