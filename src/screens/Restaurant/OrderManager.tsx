@@ -10,6 +10,7 @@ import {
   TextInput,
   Modal,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import LinearGradient from "react-native-linear-gradient";
 import { useSelector } from "react-redux";
@@ -21,6 +22,7 @@ import {
   ChevronRight,
   List,
   LayoutGrid,
+  ArrowLeft,
 } from "lucide-react-native";
 
 import { getRestaurantOrders, updateOrderStatus } from "../../API/orderApi";
@@ -398,115 +400,159 @@ const OrderManager = () => {
   // GRID: the full card, two to a row - every item and every status
   // transition. This is the detailed view now, so the item list is capped:
   // at half width an eight-dish order wrapped every name onto three lines.
-  const renderOrderCard = (order: any, expanded = false) => (
-    <View key={order._id} style={styles.card}>
-      {/* A status-coloured edge, so the state of each row is readable while
-          scanning down the left of the list without reading any text. */}
-      <View
-        style={[styles.cardAccent, { backgroundColor: getStatusMeta(order.status).color }]}
-      />
-      {/* Order Header - also the tap target for the full detail screen, so
-          the whole order is reachable from a card that only shows three of
-          its lines. Not wired up inside the detail screen itself, where it
-          would reopen the screen you are already on. */}
-      <TouchableOpacity
-        style={styles.cardHeader}
-        activeOpacity={expanded ? 1 : 0.7}
-        disabled={expanded}
-        onPress={() =>
-          setActiveSession({ tableNumber: order.tableNumber, orders: [order] })
-        }
-      >
-        <View>
-          <View style={styles.tableBadge}>
-            <Text style={styles.tableBadgeText}>Table {order.tableNumber}</Text>
-          </View>
-          <Text style={styles.customerName}>{order.customerName}</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <Text style={styles.timeText}>
-            {new Date(order.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-          <Text
+  // The stage buttons, shared by the board card and the detail screen so the
+  // two can never disagree about which transitions are on offer - which is
+  // the whole point of canTransitionTo mirroring the server's guards.
+  const renderStatusActions = (order: any) => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.actionButtonsRow}
+    >
+      {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }) => {
+        const isCurrent = order.status === value;
+        const allowed = canTransitionTo(order, value, now);
+        return (
+          <TouchableOpacity
+            key={value}
+            onPress={() => handleStatusChange(order._id, value)}
+            disabled={!allowed}
             style={[
-              styles.paymentStatusText,
-              order.paymentStatus === "Paid" ? styles.textGreen : styles.textAmber,
+              styles.actionBtn,
+              isCurrent ? { backgroundColor: `${color}1A`, borderColor: color } : styles.btnInactive,
+              !isCurrent && !allowed && styles.iconBtnBlocked,
             ]}
+            accessibilityState={{ disabled: !allowed }}
           >
-            {order.paymentStatus === "Paid" ? "✅ Paid" : "⏳ Pending"}
-          </Text>
-        </View>
-      </TouchableOpacity>
+            <Icon size={14} color={isCurrent ? color : "#6b7280"} />
+            <Text style={[styles.btnText, { color: isCurrent ? color : "#6b7280" }]}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      {canCancel && canTransitionTo(order, "Cancelled", now) && (
+        <TouchableOpacity
+          onPress={() => requestCancel(order._id)}
+          style={[styles.actionBtn, styles.btnCancel]}
+        >
+          <XCircle size={14} color="#dc2626" />
+          <Text style={[styles.btnText, { color: "#dc2626" }]}>Cancel</Text>
+        </TouchableOpacity>
+      )}
+    </ScrollView>
+  );
 
-      {/* Order Items */}
-      <View style={styles.cardBody}>
-        {order.items.map((item: any, idx: number) => (
-          <View key={idx} style={styles.itemRow}>
-            <View style={styles.itemInfo}>
-              <Text style={styles.itemQty}>{item.quantity}x</Text>
-              <Text style={styles.itemName} numberOfLines={2}>
+  // One standalone order. Deliberately NOT shared with renderSessionGroupCard,
+  // which keeps its own orange-gradient treatment so a multi-batch table can
+  // never be misread as one more single order.
+  const renderOrderCard = (order: any, expanded = false) => {
+    const meta = getStatusMeta(order.status);
+    const items = order.items || [];
+    const itemCount = items.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
+    // Long orders are truncated on the board and shown in full on the detail
+    // screen. A ten-line card pushes every other order off screen, which is
+    // the opposite of what a live board is for.
+    const visibleItems = expanded ? items : items.slice(0, 3);
+    const hiddenCount = items.length - visibleItems.length;
+    const isPaid = order.paymentStatus === "Paid";
+
+    // How long this order has been open. On a kitchen board "18m" is the
+    // number people actually act on - a wall-clock time makes you do the
+    // subtraction yourself. Computed at render rather than on a dedicated
+    // timer: the 30s poll and every socket event re-render this list, so it
+    // is never more than a poll behind.
+    const ageMs = Date.now() - new Date(order.createdAt || 0).getTime();
+    const ageMin = Number.isFinite(ageMs) ? Math.max(0, Math.floor(ageMs / 60000)) : 0;
+    const ageLabel = ageMin < 60 ? `${ageMin}m` : `${Math.floor(ageMin / 60)}h ${ageMin % 60}m`;
+    // Only once it is genuinely lingering, and never for an order nobody is
+    // waiting on any more.
+    const isStale = ageMin >= 20 && !TERMINAL_ORDER_STATUSES.includes(order.status);
+
+    return (
+      <View key={order._id} style={styles.card}>
+        {/* The status colour is carried by a full-width top rail rather than a
+            thin left edge: at a glance across a grid of cards it reads as the
+            card's own colour, not a stripe that has to be looked for. */}
+        <View style={[styles.cardRail, { backgroundColor: meta.color }]} />
+
+        {/* Header doubles as the tap target for the full detail screen, so an
+            order whose items are truncated is always one tap from complete.
+            Disabled inside the detail screen, where it would reopen itself. */}
+        <TouchableOpacity
+          style={styles.cardHeader}
+          activeOpacity={expanded ? 1 : 0.7}
+          disabled={expanded}
+          onPress={() =>
+            setActiveSession({ tableNumber: order.tableNumber, orders: [order] })
+          }
+        >
+          <View style={styles.cardTableChip}>
+            <Text style={styles.cardTableChipText}>T{order.tableNumber}</Text>
+          </View>
+
+          <View style={styles.cardIdentity}>
+            <Text style={styles.cardCustomer} numberOfLines={1}>
+              {order.customerName || "Guest"}
+            </Text>
+            <View style={styles.cardMetaRow}>
+              {/* Status as a dot + word, not a colour alone - colour is the
+                  fast signal, the word is the one that survives being
+                  colour-blind or glanced at in bright sun. */}
+              <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
+              <Text style={[styles.cardStatusText, { color: meta.color }]} numberOfLines={1}>
+                {meta.label}
+              </Text>
+              <Text style={styles.cardMetaDivider}>·</Text>
+              <Text style={[styles.cardAge, isStale && styles.cardAgeStale]}>{ageLabel}</Text>
+            </View>
+          </View>
+
+          {/* Payment as a proper pill. This used to be "✅ Paid" / "⏳ Pending"
+              - emoji render differently on every OS and cannot be tinted. */}
+          <View style={[styles.payPill, isPaid ? styles.payPillPaid : styles.payPillDue]}>
+            <Text style={[styles.payPillText, isPaid ? styles.payPillTextPaid : styles.payPillTextDue]}>
+              {isPaid ? "Paid" : "Due"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.cardBody}>
+          {visibleItems.map((item: any, idx: number) => (
+            <View key={idx} style={styles.itemRow}>
+              <Text style={styles.itemQty}>{item.quantity}×</Text>
+              <Text style={styles.itemName} numberOfLines={1}>
                 {item.name}
               </Text>
+              <Text style={styles.itemPrice}>
+                ₹{formatMoney(item.price * item.quantity)}
+              </Text>
             </View>
-            <Text style={styles.itemPrice}>₹{formatMoney(item.price * item.quantity)}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Order Footer & Actions */}
-      <View style={styles.cardFooter}>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <View style={styles.totalValueContainer}>
-            <IndianRupee size={18} color="#15803d" />
-            <Text style={styles.totalAmount}>{formatMoney(order.totalPrice)}</Text>
-          </View>
+          ))}
+          {hiddenCount > 0 && (
+            <Text style={styles.itemsMore}>
+              +{hiddenCount} more item{hiddenCount === 1 ? "" : "s"}
+            </Text>
+          )}
         </View>
 
-        {canUpdateStatus && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.actionButtonsRow}
-        >
-          {ORDER_STATUS_FLOW.map(({ value, label, Icon, color }) => {
-            const isCurrent = order.status === value;
-            const allowed = canTransitionTo(order, value, now);
-            return (
-              <TouchableOpacity
-                key={value}
-                onPress={() => handleStatusChange(order._id, value)}
-                disabled={!allowed}
-                style={[
-                  styles.actionBtn,
-                  isCurrent ? { backgroundColor: `${color}1A`, borderColor: color } : styles.btnInactive,
-                  !isCurrent && !allowed && styles.iconBtnBlocked,
-                ]}
-                accessibilityState={{ disabled: !allowed }}
-              >
-                <Icon size={14} color={isCurrent ? color : "#6b7280"} />
-                <Text style={[styles.btnText, { color: isCurrent ? color : "#6b7280" }]}>{label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-          {canCancel && canTransitionTo(order, "Cancelled", now) && (
-            <TouchableOpacity
-              onPress={() => requestCancel(order._id)}
-              style={[styles.actionBtn, styles.btnCancel]}
-            >
-              <XCircle size={14} color="#dc2626" />
-              <Text style={[styles.btnText, { color: "#dc2626" }]}>Cancel</Text>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
-        )}
+        <View style={styles.cardFooter}>
+          {/* Count on the left, money on the right: the two numbers a manager
+              scans for, on one line instead of a labelled "Total" row. */}
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>
+              {itemCount} item{itemCount === 1 ? "" : "s"}
+            </Text>
+            <View style={styles.totalValueContainer}>
+              <IndianRupee size={15} color="#15803d" />
+              <Text style={styles.totalAmount}>{formatMoney(order.totalPrice)}</Text>
+            </View>
+          </View>
+
+          {canUpdateStatus && renderStatusActions(order)}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   // A combined session is deliberately NOT another white row: it renders on
   // an orange gradient with light-on-dark type, so a table running multiple
@@ -850,32 +896,171 @@ const OrderManager = () => {
         }
       />
 
-      {/* REVIEW ALL BATCHES MODAL */}
+      {/* ORDER / SESSION DETAIL */}
       <Modal visible={!!activeSession} animationType="slide" onRequestClose={() => setActiveSession(null)}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>Table {activeSession?.tableNumber}</Text>
-              <Text style={styles.modalSubtitle}>
-                {(activeSession?.orders.length || 0) > 1
-                  ? `${activeSession?.orders.length} batches · ₹${formatMoney(
-                      (activeSession?.orders || []).reduce((sum, o) => sum + o.totalPrice, 0),
-                    )} this visit`
-                  : activeSession?.orders[0]?.customerName
-                    ? `Order from ${activeSession.orders[0].customerName}`
-                    : "Order detail"}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => setActiveSession(null)} style={styles.modalCloseBtn}>
-              <XCircle size={24} color="#6b7280" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
-            <View style={styles.modalCardStack}>
-              {activeSession?.orders.map((order) => renderOrderCard(order, true))}
-            </View>
-          </ScrollView>
-        </View>
+        {(() => {
+          const detailOrders = activeSession?.orders || [];
+          const isSession = detailOrders.length > 1;
+          const grandTotal = detailOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+          const detailItemCount = detailOrders.reduce(
+            (sum, o) => sum + (o.items || []).reduce((n: number, it: any) => n + (it.quantity || 0), 0),
+            0,
+          );
+          const lead = detailOrders[0];
+          const leadMeta = lead ? getStatusMeta(lead.status) : null;
+
+          return (
+            // SafeAreaView, not the hardcoded paddingTop:50 this used to
+            // carry - that number was a guess at one device's status bar and
+            // was wrong on every other.
+            <SafeAreaView style={styles.detailContainer}>
+              {/* The same back bar every other drill-in in this app uses
+                  (Menu item detail, Top Selling Items), rather than an
+                  XCircle in the corner - a red cancel glyph reads as
+                  "discard", not "go back". */}
+              <View style={styles.detailBar}>
+                <TouchableOpacity
+                  style={styles.detailBack}
+                  onPress={() => setActiveSession(null)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
+                >
+                  <ArrowLeft size={18} color="#374151" />
+                  <Text style={styles.detailBarTitle} numberOfLines={1}>
+                    Table {activeSession?.tableNumber}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.detailContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* A summary the old screen never had: it opened straight
+                    into the batch cards, so the one thing you came to check -
+                    who, what state, how much - had to be assembled by eye. */}
+                <View style={styles.detailSummary}>
+                  <View style={styles.detailSummaryTop}>
+                    <View style={styles.detailNameBlock}>
+                      <Text style={styles.detailName} numberOfLines={1}>
+                        {lead?.customerName || "Guest"}
+                      </Text>
+                      {!!leadMeta && !isSession && (
+                        <View style={styles.detailStatusRow}>
+                          <View style={[styles.statusDot, { backgroundColor: leadMeta.color }]} />
+                          <Text style={[styles.detailStatusText, { color: leadMeta.color }]}>
+                            {leadMeta.label}
+                          </Text>
+                        </View>
+                      )}
+                      {isSession && (
+                        <Text style={styles.detailStatusText}>Combined session</Text>
+                      )}
+                    </View>
+                    <View style={styles.detailTableChip}>
+                      <Text style={styles.detailTableChipText}>T{activeSession?.tableNumber}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.detailStatsRow}>
+                    {/* A single order has exactly one batch, so counting them
+                        is noise - it gets payment state in that slot instead,
+                        which is the thing actually worth knowing here. */}
+                    {isSession && (
+                      <>
+                        <View style={styles.detailStat}>
+                          <Text style={styles.detailStatValue}>{detailOrders.length}</Text>
+                          <Text style={styles.detailStatLabel}>Batches</Text>
+                        </View>
+                        <View style={styles.detailStatDivider} />
+                      </>
+                    )}
+                    <View style={styles.detailStat}>
+                      <Text style={styles.detailStatValue}>{detailItemCount}</Text>
+                      <Text style={styles.detailStatLabel}>Items</Text>
+                    </View>
+                    <View style={styles.detailStatDivider} />
+                    <View style={styles.detailStat}>
+                      <Text style={[styles.detailStatValue, styles.detailStatMoney]}>
+                        ₹{formatMoney(grandTotal)}
+                      </Text>
+                      <Text style={styles.detailStatLabel}>
+                        {isSession ? "This visit" : "Total"}
+                      </Text>
+                    </View>
+                    {!isSession && (
+                      <>
+                        <View style={styles.detailStatDivider} />
+                        <View style={styles.detailStat}>
+                          <Text
+                            style={[
+                              styles.detailStatValue,
+                              lead?.paymentStatus === "Paid" ? styles.textGreen : styles.textAmber,
+                            ]}
+                          >
+                            {lead?.paymentStatus === "Paid" ? "Paid" : "Due"}
+                          </Text>
+                          <Text style={styles.detailStatLabel}>Payment</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                </View>
+
+                {isSession ? (
+                  // Several distinct orders, so each keeps its own card: the
+                  // header is what tells one batch from the next.
+                  <>
+                    <Text style={styles.detailSectionLabel}>Batches</Text>
+                    <View style={styles.detailStack}>
+                      {detailOrders.map((order) => renderOrderCard(order, true))}
+                    </View>
+                  </>
+                ) : (
+                  // One order. Rendering the board card here as well put the
+                  // customer, table, status and total on screen twice, one
+                  // card under the other - the duplication that made this
+                  // screen look wrong. The summary above owns the identity;
+                  // these two panels own the contents and the controls, and
+                  // neither repeats it.
+                  lead && (
+                    <>
+                      <Text style={styles.detailSectionLabel}>Items</Text>
+                      <View style={styles.detailPanel}>
+                        {(lead.items || []).map((item: any, idx: number) => (
+                          <View key={idx} style={styles.detailItemRow}>
+                            <Text style={styles.itemQty}>{item.quantity}×</Text>
+                            <Text style={styles.detailItemName}>{item.name}</Text>
+                            <Text style={styles.detailItemPrice}>
+                              ₹{formatMoney(item.price * item.quantity)}
+                            </Text>
+                          </View>
+                        ))}
+                        <View style={styles.detailTotalRow}>
+                          <Text style={styles.detailTotalLabel}>Total</Text>
+                          <Text style={styles.detailTotalValue}>
+                            ₹{formatMoney(lead.totalPrice)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {canUpdateStatus && (
+                        <>
+                          <Text style={styles.detailSectionLabel}>Update status</Text>
+                          <View style={styles.detailActionsPanel}>
+                            {renderStatusActions(lead)}
+                          </View>
+                        </>
+                      )}
+                    </>
+                  )
+                )}
+              </ScrollView>
+            </SafeAreaView>
+          );
+        })()}
       </Modal>
     </View>
   );
@@ -1005,7 +1190,6 @@ const styles = StyleSheet.create({
   // Flat, not raised. A drop shadow on every row turned the list into a stack
   // of floating tiles; a plain border reads as a list.
   card: { backgroundColor: "#ffffff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", overflow: "hidden" },
-  cardAccent: { position: "absolute", left: 0, top: 0, bottom: 0, width: 4, zIndex: 1 },
 
   // LIST row. Deliberately flat and tight: the point of list view is to see
   // many orders at once, so nothing here has a shadow, a big pad, or a label
@@ -1063,26 +1247,65 @@ const styles = StyleSheet.create({
   // from here.
   iconBtnBlocked: { opacity: 0.35 },
   iconBtnCancel: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#f9fafb", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
-  tableBadge: { backgroundColor: "#ffedd5", alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginBottom: 6 },
-  tableBadgeText: { color: "#c2410c", fontSize: 12, fontWeight: "bold" },
-  customerName: { fontWeight: "bold", color: "#1f2937", fontSize: 16 },
-  headerRight: { alignItems: "flex-end" },
-  timeText: { fontSize: 12, color: "#6b7280", fontWeight: "500" },
-  paymentStatusText: { fontSize: 12, fontWeight: "bold", marginTop: 4 },
+  // Full-width status rail across the top. Reads as the card's own colour
+  // from across the room, unlike a 4px left edge you have to hunt for.
+  cardRail: { height: 4, width: "100%" },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  // "T5" rather than "Table 5": on a board every card is a table, so the word
+  // is nine repeated characters that push the customer's name sideways.
+  cardTableChip: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardTableChipText: { color: "#c2410c", fontSize: 14, fontWeight: "900" },
+  cardIdentity: { flex: 1, gap: 3 },
+  cardCustomer: { fontWeight: "800", color: "#111827", fontSize: 15 },
+  cardMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  cardStatusText: { fontSize: 12, fontWeight: "800", flexShrink: 1 },
+  cardMetaDivider: { fontSize: 12, color: "#d1d5db" },
+  cardAge: { fontSize: 12, color: "#6b7280", fontWeight: "600" },
+  // An order sitting past 20 minutes is the one worth walking over to.
+  cardAgeStale: { color: "#dc2626", fontWeight: "800" },
+  payPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  payPillPaid: { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" },
+  payPillDue: { backgroundColor: "#fffbeb", borderColor: "#fde68a" },
+  payPillText: { fontSize: 11, fontWeight: "800" },
+  payPillTextPaid: { color: "#15803d" },
+  payPillTextDue: { color: "#b45309" },
+  // Still used by the list-view row, which is a separate treatment from the
+  // card and was deliberately left as it is.
   textGreen: { color: "#16a34a" },
   textAmber: { color: "#d97706" },
-  cardBody: { padding: 16, gap: 12 },
-  itemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  itemInfo: { flexDirection: "row", flex: 1, paddingRight: 12 },
-  itemQty: { fontWeight: "bold", color: "#374151", marginRight: 8, fontSize: 14 },
-  itemName: { color: "#4b5563", fontSize: 14, flexShrink: 1 },
-  itemPrice: { color: "#6b7280", fontSize: 14 },
-  cardFooter: { padding: 16, borderTopWidth: 1, borderTopColor: "#f3f4f6", backgroundColor: "#ffffff" },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  totalLabel: { fontSize: 14, fontWeight: "bold", color: "#6b7280" },
+
+  cardBody: { paddingHorizontal: 14, paddingVertical: 12, gap: 9 },
+  // Three columns on one line - quantity, name, money - so the prices form a
+  // straight right-hand edge instead of drifting with each name's length.
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  itemQty: { fontWeight: "800", color: "#ea580c", fontSize: 13, minWidth: 26 },
+  itemName: { color: "#374151", fontSize: 14, flex: 1 },
+  itemPrice: { color: "#6b7280", fontSize: 13, fontWeight: "700" },
+  itemsMore: { color: "#9ca3af", fontSize: 12, fontWeight: "700", fontStyle: "italic" },
+
+  cardFooter: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, borderTopWidth: 1, borderTopColor: "#f3f4f6", backgroundColor: "#fafafa" },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  totalLabel: { fontSize: 12, fontWeight: "700", color: "#9ca3af" },
   totalValueContainer: { flexDirection: "row", alignItems: "center" },
-  totalAmount: { fontSize: 20, fontWeight: "900", color: "#15803d", marginLeft: 2 },
+  totalAmount: { fontSize: 18, fontWeight: "900", color: "#15803d", marginLeft: 1 },
   actionButtonsRow: { gap: 8 },
   actionBtn: { flexDirection: "row", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", borderWidth: 2, gap: 4 },
   btnText: { fontSize: 12, fontWeight: "bold" },
@@ -1176,13 +1399,109 @@ const styles = StyleSheet.create({
   sessionReviewBtnText: { color: "#c2410c", fontWeight: "900", fontSize: 14 },
 
   // Review-all-batches modal
-  modalContainer: { flex: 1, backgroundColor: "#f3f4f6" },
-  modalCardStack: { padding: 16, gap: 16 },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 20, paddingTop: 50, backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
-  modalTitle: { fontSize: 22, fontWeight: "900", color: "#1f2937" },
-  modalSubtitle: { fontSize: 12, color: "#9ca3af", fontWeight: "600", marginTop: 4, maxWidth: 260 },
-  modalCloseBtn: { padding: 8, backgroundColor: "#f9fafb", borderRadius: 100 },
-  modalContent: { padding: 16, paddingBottom: 40 },
+  detailContainer: { flex: 1, backgroundColor: "#f9fafb" },
+  detailBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  detailBack: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  detailBarTitle: { fontSize: 16, fontWeight: "800", color: "#1f2937", flexShrink: 1 },
+  // Single padding, not the 32px the old screen produced by padding the
+  // scroll content AND the stack inside it.
+  detailContent: { padding: 16, paddingBottom: 40 },
+
+  detailSummary: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    padding: 16,
+    marginBottom: 16,
+  },
+  detailSummaryTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  detailNameBlock: { flex: 1, gap: 4 },
+  detailName: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  detailStatusRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  detailStatusText: { fontSize: 12, fontWeight: "800", color: "#6b7280" },
+  detailTableChip: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailTableChipText: { color: "#c2410c", fontSize: 16, fontWeight: "900" },
+  // Three figures on one line - the answer to "what is this table costing me
+  // and how far along is it" without scrolling through the batches.
+  detailStatsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
+  detailStat: { flex: 1, alignItems: "center", gap: 2 },
+  detailStatDivider: { width: 1, height: 26, backgroundColor: "#f1f5f9" },
+  detailStatValue: { fontSize: 16, fontWeight: "900", color: "#1f2937" },
+  detailStatMoney: { color: "#15803d" },
+  detailStatLabel: { fontSize: 11, color: "#9ca3af", fontWeight: "700" },
+  detailSectionLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  detailStack: { gap: 14 },
+
+  // Plain panels for the single-order case - no header of their own, because
+  // the summary card above already carries the identity.
+  detailPanel: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginBottom: 16,
+  },
+  detailItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 11,
+  },
+  detailItemName: { flex: 1, fontSize: 14, color: "#374151", fontWeight: "500" },
+  detailItemPrice: { fontSize: 14, color: "#4b5563", fontWeight: "700" },
+  detailTotalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 13,
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
+  detailTotalLabel: { fontSize: 13, fontWeight: "800", color: "#6b7280" },
+  detailTotalValue: { fontSize: 18, fontWeight: "900", color: "#15803d" },
+  detailActionsPanel: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    paddingVertical: 12,
+    paddingLeft: 12,
+    marginBottom: 16,
+  },
 });
 
 export default OrderManager;
